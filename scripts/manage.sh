@@ -103,9 +103,28 @@ deploy_controller() {
 # CONTROLLER HEALTH VERIFICATION
 #==============================================================================
 
+wait_for_endpoint() {
+  local endpoint="$1"
+  local attempt
+
+  for (( attempt = 1; attempt <= 120; attempt++ )); do
+    if curl --fail --silent --show-error "$endpoint" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 5
+  done
+
+  printf 'Jenkins did not become ready at %s.\n' "$endpoint" >&2
+  docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    ps >&2 || true
+  return 1
+}
+
 verify_controller() {
-  curl --fail --silent --show-error http://127.0.0.1:8080/login >/dev/null
-  curl --fail --silent --show-error http://127.0.0.1:8080/prometheus >/dev/null
+  wait_for_endpoint http://127.0.0.1:8080/login
+  wait_for_endpoint http://127.0.0.1:8080/prometheus
   printf 'jenkins_verify=ready\n'
 }
 
