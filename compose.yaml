@@ -1,0 +1,88 @@
+#==============================================================================
+# LOW RESOURCE JENKINS CONTROLLER
+#==============================================================================
+
+#==============================================================================
+# STACK IDENTITY
+#==============================================================================
+
+name: jenkins-controller
+
+#==============================================================================
+# CONTROLLER SERVICES
+#==============================================================================
+
+services:
+  #============================================================================
+  # JENKINS CONTROLLER SERVICE
+  #============================================================================
+
+  jenkins:
+    #==========================================================================
+    # CONTROLLER IMAGE BUILD
+    #==========================================================================
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jenkins-controller:${JENKINS_CONTROLLER_VERSION:-2.528.3-lts-jdk21}
+
+    #==========================================================================
+    # CONTROLLER RESOURCE LIMITS
+    #==========================================================================
+
+    deploy:
+      resources:
+        limits:
+          cpus: "0.70"
+          memory: 2048M
+
+            #==========================================================================
+            # CONTROLLER RUNTIME ENVIRONMENT
+            #==========================================================================
+
+    environment:
+      CASC_JENKINS_CONFIG: /var/jenkins_config/jenkins.yaml
+      JAVA_OPTS: -Xms512m -Xmx1024m -XX:+UseG1GC -Djenkins.install.runSetupWizard=false
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
+      JENKINS_OPTS: --httpPort=8080
+      JENKINS_URL: ${JENKINS_URL:-http://localhost:8080}
+
+    #==========================================================================
+    # DOCKER SOCKET ACCESS
+    #==========================================================================
+
+    group_add:
+      - ${DOCKER_GID:-999}
+
+    #==========================================================================
+    # CONTROLLER NETWORK, SECRETS, AND STORAGE
+    #==========================================================================
+
+    ports:
+      - ${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080:8080
+    restart: unless-stopped
+    secrets:
+      - github_token
+      - jenkins_admin_password
+    volumes:
+      - ./jcasc:/var/jenkins_config:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - jenkins-home:/var/jenkins_home
+
+    #==============================================================================
+    # CONTROLLER SECRETS
+    #==============================================================================
+
+secrets:
+  github_token:
+    file: ${GITHUB_TOKEN_FILE:-./secrets/github-token}
+  jenkins_admin_password:
+    file: ${JENKINS_ADMIN_PASSWORD_FILE:-./secrets/jenkins-admin-password}
+
+#==============================================================================
+# CONTROLLER PERSISTENT VOLUMES
+#==============================================================================
+
+volumes:
+  jenkins-home:

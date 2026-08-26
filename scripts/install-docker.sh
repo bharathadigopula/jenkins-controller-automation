@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+#==============================================================================
+# PINNED DOCKER ENGINE INSTALLATION
+#==============================================================================
+
+#==============================================================================
+# SHELL SAFETY
+#==============================================================================
+
+set -euo pipefail
+
+#==============================================================================
+# INSTALLATION INPUTS
+#==============================================================================
+
+action="${1:-validate}"
+docker_engine_version="${DOCKER_ENGINE_VERSION:-5:28.3.3-1~ubuntu.24.04~noble}"
+docker_compose_version="${DOCKER_COMPOSE_VERSION:-2.38.2-1~ubuntu.24.04~noble}"
+
+#==============================================================================
+# ACTION VALIDATION
+#==============================================================================
+
+if [[ "$action" != "validate" && "$action" != "dry-run" && "$action" != "deploy" ]]; then
+  printf 'Usage: %s validate|dry-run|deploy\n' "$0" >&2
+  exit 2
+fi
+
+#==============================================================================
+# OPERATING SYSTEM VALIDATION
+#==============================================================================
+
+if [[ ! -r /etc/os-release ]]; then
+  printf 'Ubuntu operating system metadata is required.\n' >&2
+  exit 1
+fi
+
+operating_system_id=$(sed -n 's/^ID=//p' /etc/os-release | tr -d '"')
+operating_system_codename=$(sed -n 's/^VERSION_CODENAME=//p' /etc/os-release | tr -d '"')
+
+if [[ "$operating_system_id" != "ubuntu" || "$operating_system_codename" != "noble" ]]; then
+  printf 'Ubuntu 24.04 noble is required, found %s %s.\n' \
+    "${operating_system_id:-unknown}" "${operating_system_codename:-unknown}" >&2
+  exit 1
+fi
+
+#==============================================================================
+# VALIDATION RESULT
+#==============================================================================
+
+if [[ "$action" == "validate" ]]; then
+  printf 'docker_install_validation=ready\n'
+  exit 0
+fi
+
+#==============================================================================
+# DRY RUN RESULT
+#==============================================================================
+
+if [[ "$action" == "dry-run" ]]; then
+  printf 'Would install Docker Engine %s and Compose %s.\n' "$docker_engine_version" "$docker_compose_version"
+  printf 'docker_install_dry_run=ready\n'
+  exit 0
+fi
+
+#==============================================================================
+# PRIVILEGE VALIDATION
+#==============================================================================
+
+if (( EUID != 0 )); then
+  printf 'Docker deployment must run as root.\n' >&2
+  exit 1
+fi
+
+#==============================================================================
+# DOCKER PACKAGE REPOSITORY
+#==============================================================================
+
+install -d -m 0755 /etc/apt/keyrings
+curl --fail --location --silent --show-error \
+  https://download.docker.com/linux/ubuntu/gpg \
+  --output /etc/apt/keyrings/docker.asc
+chmod 0644 /etc/apt/keyrings/docker.asc
+architecture=$(dpkg --print-architecture)
+printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu %s stable\n' \
+  "$architecture" "$operating_system_codename" > /etc/apt/sources.list.d/docker.list
+
+#==============================================================================
+# PINNED DOCKER PACKAGES
+#==============================================================================
+
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install --yes \
+  "docker-ce=$docker_engine_version" \
+  "docker-ce-cli=$docker_engine_version" \
+  containerd.io \
+  docker-buildx-plugin \
+  "docker-compose-plugin=$docker_compose_version"
+
+#==============================================================================
+# DOCKER RUNTIME VALIDATION
+#==============================================================================
+
+systemctl enable --now docker
+docker version
+docker compose version
+printf 'docker_install=ready\n'
