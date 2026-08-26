@@ -2,7 +2,7 @@
 # JENKINS CONFIGURATION PLUGINS
 #==============================================================================
 
-configuration-as-code:1985.vdda_32d0c4ea_b_
+configuration-as-code:2036.v0b_c2de701dcb_
 credentials-binding:728.v902a_273b_8947
 
 #==============================================================================
