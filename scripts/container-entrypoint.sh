@@ -30,7 +30,11 @@ if [[ -z "$JENKINS_ADMIN_PASSWORD" || -z "$GITHUB_TOKEN" ]]; then
 fi
 
 #==============================================================================
-# CONTROLLER EXECUTION
+# NON ROOT CONTROLLER EXECUTION
 #==============================================================================
 
-exec /usr/local/bin/jenkins.sh
+exec setpriv \
+  --reuid="$(id -u jenkins)" \
+  --regid="$(id -g jenkins)" \
+  --keep-groups \
+  /usr/local/bin/jenkins.sh

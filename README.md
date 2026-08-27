@@ -38,7 +38,7 @@ SECURITY MODEL
 - Jenkins' setup wizard is disabled only because JCasC creates the administrator account.
 - Anonymous access and user signup are disabled.
 - Native Jenkins login remains required behind any identity-aware proxy.
-- The administrator password and GitHub token are mounted as Docker secrets.
+- The administrator password and GitHub token are mounted as Docker secrets; the entrypoint reads them before dropping to the non-root Jenkins user while retaining Docker socket group access.
 - JCasC installs a `github-token` secret-text credential for private repository access.
 - The HTTP listener should bind to a private address and be published only through authenticated outbound ingress.
 
@@ -83,7 +83,7 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.4 \
+  v1.0.5 \
   https://jenkins.example.com \
   10.0.0.20 \
   ""

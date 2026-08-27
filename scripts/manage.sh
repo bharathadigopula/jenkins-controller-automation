@@ -109,10 +109,15 @@ deploy_controller() {
 
 wait_for_endpoint() {
   local endpoint="$1"
+  local password_file="${2:-}"
   local attempt
 
   for (( attempt = 1; attempt <= 120; attempt++ )); do
-    if curl --fail --silent --show-error "$endpoint" >/dev/null 2>&1; then
+    if [[ -n "$password_file" ]] && curl --fail --silent --show-error \
+      --user "${JENKINS_ADMIN_ID:-admin}:$(<"$password_file")" "$endpoint" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [[ -z "$password_file" ]] && curl --fail --silent --show-error "$endpoint" >/dev/null 2>&1; then
       return 0
     fi
     sleep 5
@@ -126,25 +131,46 @@ wait_for_endpoint() {
   return 1
 }
 
+show_controller_diagnostics() {
+  local container_id
+
+  container_id=$(docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    ps --all --quiet jenkins)
+  if [[ -n "$container_id" ]]; then
+    docker inspect --format 'jenkins_container={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' \
+      "$container_id" >&2 || true
+  fi
+  docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    logs --no-color --tail 20 jenkins >&2 || true
+}
+
 verify_controller() {
   local anonymous_status
+  local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
 
   if [[ "$(docker compose \
     --project-directory "$install_root/current" \
     --file "$install_root/current/compose.yaml" \
     ps --services --filter status=running | sort)" != "jenkins" ]]; then
     printf 'Jenkins Compose service is not running.\n' >&2
+    show_controller_diagnostics
     return 1
   fi
 
   wait_for_endpoint http://127.0.0.1:8080/login
-  wait_for_endpoint http://127.0.0.1:8080/prometheus
+  wait_for_endpoint http://127.0.0.1:8080/prometheus "$admin_password_file"
   anonymous_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/manage)
   if [[ "$anonymous_status" != "403" ]]; then
     printf 'Anonymous Jenkins management access returned HTTP %s instead of 403.\n' "$anonymous_status" >&2
     return 1
   fi
-  if ! curl --fail --silent --show-error http://127.0.0.1:8080/prometheus | grep -Fq 'jenkins_version_info'; then
+  if ! curl --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    http://127.0.0.1:8080/prometheus | grep -Fq 'jenkins_version_info'; then
     printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
     return 1
   fi
@@ -233,13 +259,10 @@ test_restore_controller() {
 #==============================================================================
 
 status_controller() {
-  systemctl --no-pager --full status jenkins-controller.service || true
-  systemctl --no-pager --full status jenkins-controller-backup.timer || true
-  docker compose \
-    --project-directory "$install_root/current" \
-    --file "$install_root/current/compose.yaml" \
-    ps
   printf 'jenkins_status=ready\n'
+  printf 'jenkins_systemd=%s\n' "$(systemctl is-active jenkins-controller.service || true)"
+  printf 'jenkins_backup_timer=%s\n' "$(systemctl is-active jenkins-controller-backup.timer || true)"
+  show_controller_diagnostics
 }
 
 #==============================================================================
