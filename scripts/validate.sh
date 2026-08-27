@@ -164,7 +164,9 @@ for readiness_marker in \
 done
 
 if ! grep -Fq -- '--user ' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'admin_password_file' "$repository_root/scripts/manage.sh"; then
+  ! grep -Fq 'admin_password_file' "$repository_root/scripts/manage.sh" || \
+  ! grep -F 'local controller_origin=' "$repository_root/scripts/manage.sh" | \
+    grep -Fq 'JENKINS_BIND_ADDRESS'; then
   printf 'Protected Jenkins metrics must use the managed administrator credential.\n' >&2
   exit 1
 fi

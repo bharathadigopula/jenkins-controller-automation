@@ -153,6 +153,7 @@ show_controller_diagnostics() {
 verify_controller() {
   local anonymous_status
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
+  local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
 
   if [[ "$(docker compose \
     --project-directory "$install_root/current" \
@@ -163,16 +164,16 @@ verify_controller() {
     return 1
   fi
 
-  wait_for_endpoint http://127.0.0.1:8080/login
-  wait_for_endpoint http://127.0.0.1:8080/prometheus "$admin_password_file"
-  anonymous_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/manage)
+  wait_for_endpoint "$controller_origin/login"
+  wait_for_endpoint "$controller_origin/prometheus" "$admin_password_file"
+  anonymous_status=$(curl --silent --output /dev/null --write-out '%{http_code}' "$controller_origin/manage")
   if [[ "$anonymous_status" != "403" ]]; then
     printf 'Anonymous Jenkins management access returned HTTP %s instead of 403.\n' "$anonymous_status" >&2
     return 1
   fi
   if ! curl --fail --silent --show-error \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
-    http://127.0.0.1:8080/prometheus | grep -Fq 'jenkins_version_info'; then
+    "$controller_origin/prometheus" | grep -Fq 'jenkins_version_info'; then
     printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
     return 1
   fi
