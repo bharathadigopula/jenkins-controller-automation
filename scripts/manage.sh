@@ -165,7 +165,7 @@ verify_controller() {
   fi
 
   wait_for_endpoint "$controller_origin/login"
-  wait_for_endpoint "$controller_origin/prometheus" "$admin_password_file"
+  wait_for_endpoint "$controller_origin/prometheus/" "$admin_password_file"
   anonymous_status=$(curl --silent --output /dev/null --write-out '%{http_code}' "$controller_origin/manage")
   if [[ "$anonymous_status" != "403" ]]; then
     printf 'Anonymous Jenkins management access returned HTTP %s instead of 403.\n' "$anonymous_status" >&2
@@ -173,7 +173,7 @@ verify_controller() {
   fi
   if ! curl --fail --silent --show-error \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
-    "$controller_origin/prometheus" | grep -Fq 'jenkins_version_info'; then
+    "$controller_origin/prometheus/" | grep -Fq 'default_jenkins_version'; then
     printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
     return 1
   fi
