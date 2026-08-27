@@ -173,7 +173,7 @@ verify_controller() {
   fi
   if ! curl --fail --silent --show-error \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
-    "$controller_origin/prometheus/" | grep -Fq 'default_jenkins_version'; then
+    "$controller_origin/prometheus/" | grep -F 'default_jenkins_version_info' >/dev/null; then
     printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
     return 1
   fi
