@@ -83,7 +83,7 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.14 \
+  v1.0.15 \
   https://jenkins.example.com \
   10.0.0.20 \
   ""
