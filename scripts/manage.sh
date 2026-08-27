@@ -133,6 +133,33 @@ wait_for_endpoint() {
   return 1
 }
 
+wait_for_metrics() {
+  local endpoint="$1"
+  local password_file="$2"
+  local attempt
+  local metrics_content_type="unavailable"
+  local metrics_details
+  local metrics_size="0"
+
+  for (( attempt = 1; attempt <= 120; attempt++ )); do
+    if metrics_details=$(curl --fail --silent --show-error --output /dev/null \
+      --write-out $'%{content_type}\n%{size_download}' \
+      --user "${JENKINS_ADMIN_ID:-admin}:$(<"$password_file")" "$endpoint" 2>/dev/null); then
+      metrics_content_type=${metrics_details%%$'\n'*}
+      metrics_size=${metrics_details##*$'\n'}
+      if [[ "$metrics_content_type" =~ ^(text/plain|application/openmetrics-text)(\;|$) && \
+        "$metrics_size" =~ ^[0-9]+$ && "$metrics_size" != "0" ]]; then
+        return 0
+      fi
+    fi
+    sleep 5
+  done
+
+  printf 'Jenkins Prometheus metrics did not become ready: content_type=%q size=%s.\n' \
+    "$metrics_content_type" "$metrics_size" >&2
+  return 1
+}
+
 show_controller_diagnostics() {
   local container_id
 
@@ -154,9 +181,6 @@ verify_controller() {
   local anonymous_status
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
   local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
-  local metrics_content_type
-  local metrics_details
-  local metrics_size
 
   if [[ "$(docker compose \
     --project-directory "$install_root/current" \
@@ -168,24 +192,10 @@ verify_controller() {
   fi
 
   wait_for_endpoint "$controller_origin/login"
-  wait_for_endpoint "$controller_origin/prometheus/" "$admin_password_file"
+  wait_for_metrics "$controller_origin/prometheus/" "$admin_password_file"
   anonymous_status=$(curl --silent --output /dev/null --write-out '%{http_code}' "$controller_origin/manage")
   if [[ "$anonymous_status" != "403" ]]; then
     printf 'Anonymous Jenkins management access returned HTTP %s instead of 403.\n' "$anonymous_status" >&2
-    return 1
-  fi
-  if ! metrics_details=$(curl --fail --silent --show-error --output /dev/null \
-    --write-out $'%{content_type}\n%{size_download}' \
-    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
-    "$controller_origin/prometheus/"); then
-    printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
-    return 1
-  fi
-  metrics_content_type=${metrics_details%%$'\n'*}
-  metrics_size=${metrics_details##*$'\n'}
-  if [[ ! "$metrics_content_type" =~ ^(text/plain|application/openmetrics-text)(\;|$) || \
-    ! "$metrics_size" =~ ^[0-9]+$ || "$metrics_size" == "0" ]]; then
-    printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
     return 1
   fi
   if ! docker compose \
