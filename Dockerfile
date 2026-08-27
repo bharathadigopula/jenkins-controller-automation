@@ -26,14 +26,13 @@ COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
 COPY scripts/container-entrypoint.sh /usr/local/bin/jenkins-controller-entrypoint
 
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt \
-    && chmod 0755 /usr/local/bin/jenkins-controller-entrypoint \
-    && command -v setpriv >/dev/null
+    && chmod 0755 /usr/local/bin/jenkins-controller-entrypoint
 
 #==============================================================================
-# ROOT SECRET ENTRYPOINT
+# NON ROOT RUNTIME
 #==============================================================================
 
-USER root
+USER jenkins
 
 #==============================================================================
 # CONTROLLER ENTRYPOINT
