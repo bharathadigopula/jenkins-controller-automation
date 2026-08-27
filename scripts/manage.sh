@@ -99,6 +99,7 @@ deploy_controller() {
   install -m 0644 "$release_path/systemd/jenkins-controller-backup.timer" /etc/systemd/system/jenkins-controller-backup.timer
   systemctl daemon-reload
   systemctl enable jenkins-controller.service
+  printf 'jenkins_deploy_phase=restart\n'
   systemctl restart jenkins-controller.service
   systemctl enable --now jenkins-controller-backup.timer
   verify_controller
@@ -141,6 +142,7 @@ wait_for_metrics() {
   local metrics_details
   local metrics_size="0"
 
+  printf 'jenkins_metrics_wait=started\n'
   for (( attempt = 1; attempt <= 120; attempt++ )); do
     if metrics_details=$(curl --fail --silent --show-error --output /dev/null \
       --write-out $'%{content_type}\n%{size_download}' \
@@ -151,6 +153,9 @@ wait_for_metrics() {
         "$metrics_size" =~ ^[0-9]+$ && "$metrics_size" != "0" ]]; then
         return 0
       fi
+    fi
+    if (( attempt % 6 == 0 )); then
+      printf 'jenkins_metrics_wait=attempt_%s\n' "$attempt"
     fi
     sleep 5
   done
