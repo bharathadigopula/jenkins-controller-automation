@@ -42,6 +42,13 @@ if grep -R --line-number --extended-regexp '(FROM|image:)[[:space:]]+[^[:space:]
   exit 1
 fi
 
+if ! grep -Fq 'USER root' "$repository_root/Dockerfile" || \
+  ! grep -Fq 'command -v setpriv' "$repository_root/Dockerfile" || \
+  ! grep -Fq -- '--keep-groups' "$repository_root/scripts/container-entrypoint.sh"; then
+  printf 'The secret loader must drop to the Jenkins user while retaining supplemental groups.\n' >&2
+  exit 1
+fi
+
 #==============================================================================
 # PLUGIN CATALOGUE VALIDATION
 #==============================================================================
@@ -120,7 +127,7 @@ fi
 sample_arguments=$(jq -cn '[
   "deploy",
   "bharathadigopula/jenkins-controller-automation",
-  "v1.0.4",
+  "v1.0.5",
   "https://jenkins.bharathcloudops.com",
   "10.10.10.68",
   "",

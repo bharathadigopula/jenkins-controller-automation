@@ -131,6 +131,23 @@ wait_for_endpoint() {
   return 1
 }
 
+show_controller_diagnostics() {
+  local container_id
+
+  container_id=$(docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    ps --all --quiet jenkins)
+  if [[ -n "$container_id" ]]; then
+    docker inspect --format 'jenkins_container={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' \
+      "$container_id" >&2 || true
+  fi
+  docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    logs --no-color --tail 20 jenkins >&2 || true
+}
+
 verify_controller() {
   local anonymous_status
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
@@ -140,6 +157,7 @@ verify_controller() {
     --file "$install_root/current/compose.yaml" \
     ps --services --filter status=running | sort)" != "jenkins" ]]; then
     printf 'Jenkins Compose service is not running.\n' >&2
+    show_controller_diagnostics
     return 1
   fi
 
@@ -241,13 +259,10 @@ test_restore_controller() {
 #==============================================================================
 
 status_controller() {
-  systemctl --no-pager --full status jenkins-controller.service || true
-  systemctl --no-pager --full status jenkins-controller-backup.timer || true
-  docker compose \
-    --project-directory "$install_root/current" \
-    --file "$install_root/current/compose.yaml" \
-    ps
   printf 'jenkins_status=ready\n'
+  printf 'jenkins_systemd=%s\n' "$(systemctl is-active jenkins-controller.service || true)"
+  printf 'jenkins_backup_timer=%s\n' "$(systemctl is-active jenkins-controller-backup.timer || true)"
+  show_controller_diagnostics
 }
 
 #==============================================================================
