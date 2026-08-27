@@ -22,6 +22,7 @@ release_ref="${AUTOMATION_REF:-local}"
 release_key=${release_ref//[^a-zA-Z0-9._-]/-}
 release_path="$install_root/releases/$release_key"
 backup_directory="${JENKINS_BACKUP_DIRECTORY:-/var/backups/jenkins-controller}"
+backup_retention_days="${JENKINS_BACKUP_RETENTION_DAYS:-7}"
 
 #==============================================================================
 # CONTROLLER VALIDATION
@@ -93,8 +94,11 @@ deploy_controller() {
 
   ln -sfn "$release_path" "$install_root/current"
   install -m 0644 "$release_path/systemd/jenkins-controller.service" /etc/systemd/system/jenkins-controller.service
+  install -m 0644 "$release_path/systemd/jenkins-controller-backup.service" /etc/systemd/system/jenkins-controller-backup.service
+  install -m 0644 "$release_path/systemd/jenkins-controller-backup.timer" /etc/systemd/system/jenkins-controller-backup.timer
   systemctl daemon-reload
   systemctl enable --now jenkins-controller.service
+  systemctl enable --now jenkins-controller-backup.timer
   verify_controller
   printf 'jenkins_deploy=ready\n'
 }
@@ -123,8 +127,51 @@ wait_for_endpoint() {
 }
 
 verify_controller() {
+  local anonymous_status
+
+  if [[ "$(docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    ps --services --filter status=running | sort)" != "jenkins" ]]; then
+    printf 'Jenkins Compose service is not running.\n' >&2
+    return 1
+  fi
+
   wait_for_endpoint http://127.0.0.1:8080/login
   wait_for_endpoint http://127.0.0.1:8080/prometheus
+  anonymous_status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/manage)
+  if [[ "$anonymous_status" != "403" ]]; then
+    printf 'Anonymous Jenkins management access returned HTTP %s instead of 403.\n' "$anonymous_status" >&2
+    return 1
+  fi
+  if ! curl --fail --silent --show-error http://127.0.0.1:8080/prometheus | grep -Fq 'jenkins_version_info'; then
+    printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
+    return 1
+  fi
+  if ! docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    exec --no-TTY jenkins test -f /var/jenkins_home/jenkins.install.InstallUtil.lastExecVersion; then
+    printf 'Jenkins initialization state is unavailable.\n' >&2
+    return 1
+  fi
+  if ! docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    exec --no-TTY jenkins test -f /var/jenkins_home/credentials.xml; then
+    printf 'Jenkins managed credentials were not provisioned.\n' >&2
+    return 1
+  fi
+  if ! systemctl is-enabled --quiet jenkins-controller-backup.timer || \
+    ! systemctl is-active --quiet jenkins-controller-backup.timer; then
+    printf 'Jenkins backup timer is not enabled and active.\n' >&2
+    return 1
+  fi
+  printf 'jenkins_service=ready\n'
+  printf 'jenkins_authentication=ready\n'
+  printf 'jenkins_metrics=ready\n'
+  printf 'jenkins_configuration=ready\n'
+  printf 'jenkins_backup_timer=ready\n'
   printf 'jenkins_verify=ready\n'
 }
 
@@ -143,7 +190,10 @@ backup_controller() {
   chmod 0600 "$archive_path"
   systemctl start jenkins-controller.service
   trap - EXIT
-  printf 'jenkins_backup=%s\n' "$archive_path"
+  find "$backup_directory" -maxdepth 1 -type f -name 'jenkins-home-*.tar.gz' \
+    -mtime "+$backup_retention_days" -delete
+  printf 'jenkins_backup_archive=%s\n' "$archive_path"
+  printf 'jenkins_backup=ready\n'
 }
 
 #==============================================================================
@@ -153,8 +203,8 @@ backup_controller() {
 restore_controller() {
   require_root
   archive_path="${JENKINS_RESTORE_ARCHIVE:-}"
-  if [[ ! -f "$archive_path" ]]; then
-    printf 'JENKINS_RESTORE_ARCHIVE must identify an existing backup.\n' >&2
+  if [[ ! "$archive_path" =~ ^${backup_directory}/jenkins-home-[0-9]{8}T[0-9]{6}Z\.tar\.gz$ || ! -f "$archive_path" ]]; then
+    printf 'JENKINS_RESTORE_ARCHIVE must identify an existing managed backup.\n' >&2
     exit 1
   fi
   volume_path=$(docker volume inspect jenkins-controller_jenkins-home --format '{{ .Mountpoint }}')
@@ -166,6 +216,30 @@ restore_controller() {
   trap - EXIT
   verify_controller
   printf 'jenkins_restore=ready\n'
+}
+
+#==============================================================================
+# CONTROLLED RESTORE TEST
+#==============================================================================
+
+test_restore_controller() {
+  backup_controller
+  JENKINS_RESTORE_ARCHIVE="$archive_path" restore_controller
+  printf 'jenkins_test_restore=ready\n'
+}
+
+#==============================================================================
+# CONTROLLER STATUS
+#==============================================================================
+
+status_controller() {
+  systemctl --no-pager --full status jenkins-controller.service || true
+  systemctl --no-pager --full status jenkins-controller-backup.timer || true
+  docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    ps
+  printf 'jenkins_status=ready\n'
 }
 
 #==============================================================================
@@ -206,6 +280,9 @@ case "$action" in
   verify)
     verify_controller
     ;;
+  status)
+    status_controller
+    ;;
   backup)
     backup_controller
     ;;
@@ -215,8 +292,11 @@ case "$action" in
   rollback)
     rollback_controller
     ;;
+  test-restore)
+    test_restore_controller
+    ;;
   *)
-    printf 'Usage: %s validate|dry-run|deploy|upgrade|verify|backup|restore|rollback [secret-json]\n' "$0" >&2
+    printf 'Unsupported Jenkins lifecycle action: %s\n' "$action" >&2
     exit 2
     ;;
 esac

@@ -19,16 +19,17 @@ automation_repository="${2:-}"
 automation_ref="${3:-}"
 jenkins_url="${4:-http://localhost:8080}"
 bind_address="${5:-127.0.0.1}"
-secret_bundle="${6:-}"
+restore_archive="${6:-}"
+secret_bundle="${7:-}"
 
 #==============================================================================
 # ACTION VALIDATION
 #==============================================================================
 
-if [[ "$action" != "validate" && "$action" != "dry-run" && "$action" != "deploy" && "$action" != "verify" ]]; then
-  printf 'Usage: %s validate|dry-run|deploy|verify repository ref url bind-address [secret]\n' "$0" >&2
-  exit 2
-fi
+case "$action" in
+  validate|dry-run|deploy|verify|status|backup|restore|rollback|test-restore) ;;
+  *) printf 'Unsupported Jenkins lifecycle action.\n' >&2; exit 2 ;;
+esac
 
 #==============================================================================
 # REPOSITORY VALIDATION
@@ -52,7 +53,7 @@ fi
 # DEPLOYMENT PRIVILEGES
 #==============================================================================
 
-if [[ "$action" == "deploy" || "$action" == "verify" ]]; then
+if [[ "$action" != "validate" && "$action" != "dry-run" ]]; then
   if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true; then
     printf '%s requires non-interactive sudo access.\n' "$action" >&2
     exit 1
@@ -65,8 +66,9 @@ fi
 
 temporary_directory=$(mktemp -d)
 trap 'rm -rf "$temporary_directory"' EXIT
-archive_url="https://github.com/$automation_repository/archive/refs/tags/$automation_ref.tar.gz"
-curl --fail --location --silent --show-error "$archive_url" --output "$temporary_directory/automation.tar.gz"
+curl --fail --location --silent --show-error \
+  "https://github.com/$automation_repository/archive/refs/tags/$automation_ref.tar.gz" \
+  --output "$temporary_directory/automation.tar.gz"
 mkdir "$temporary_directory/source"
 tar --extract --gzip --file "$temporary_directory/automation.tar.gz" \
   --directory "$temporary_directory/source" --strip-components=1
@@ -75,19 +77,17 @@ tar --extract --gzip --file "$temporary_directory/automation.tar.gz" \
 # VERSIONED AUTOMATION EXECUTION
 #==============================================================================
 
-manage_environment=(
-  "AUTOMATION_REF=$automation_ref"
-  "JENKINS_URL=$jenkins_url"
-  "JENKINS_BIND_ADDRESS=$bind_address"
-)
 manage_script="$temporary_directory/source/scripts/manage.sh"
 
 if [[ "$action" == "deploy" ]]; then
   sudo -n bash "$temporary_directory/source/scripts/install-docker.sh" "$action"
-  sudo -n env "${manage_environment[@]}" bash "$manage_script" "$action" "$secret_bundle"
-elif [[ "$action" == "verify" ]]; then
-  sudo -n env "${manage_environment[@]}" bash "$manage_script" "$action"
-else
+  sudo -n env AUTOMATION_REF="$automation_ref" JENKINS_URL="$jenkins_url" JENKINS_BIND_ADDRESS="$bind_address" \
+    bash "$manage_script" "$action" "$secret_bundle"
+elif [[ "$action" == "validate" || "$action" == "dry-run" ]]; then
   bash "$temporary_directory/source/scripts/install-docker.sh" "$action"
-  env "${manage_environment[@]}" bash "$manage_script" "$action" "$secret_bundle"
+  env AUTOMATION_REF="$automation_ref" JENKINS_URL="$jenkins_url" JENKINS_BIND_ADDRESS="$bind_address" \
+    bash "$manage_script" "$action"
+else
+  sudo -n env AUTOMATION_REF="$automation_ref" JENKINS_URL="$jenkins_url" JENKINS_BIND_ADDRESS="$bind_address" \
+    JENKINS_RESTORE_ARCHIVE="$restore_archive" bash "$manage_script" "$action"
 fi
