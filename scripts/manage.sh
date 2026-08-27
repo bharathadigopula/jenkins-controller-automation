@@ -98,7 +98,8 @@ deploy_controller() {
   install -m 0644 "$release_path/systemd/jenkins-controller-backup.service" /etc/systemd/system/jenkins-controller-backup.service
   install -m 0644 "$release_path/systemd/jenkins-controller-backup.timer" /etc/systemd/system/jenkins-controller-backup.timer
   systemctl daemon-reload
-  systemctl enable --now jenkins-controller.service
+  systemctl enable jenkins-controller.service
+  systemctl restart jenkins-controller.service
   systemctl enable --now jenkins-controller-backup.timer
   verify_controller
   printf 'jenkins_deploy=ready\n'
