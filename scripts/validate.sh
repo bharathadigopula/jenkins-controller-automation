@@ -180,6 +180,12 @@ if ! grep -Fq 'controller_origin/prometheus/' "$repository_root/scripts/manage.s
   exit 1
 fi
 
+if ! grep -Fq 'jenkins_deploy_phase=restart' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_metrics_wait=attempt_' "$repository_root/scripts/manage.sh"; then
+  printf 'Long Jenkins deployment phases must emit bounded OCI progress markers.\n' >&2
+  exit 1
+fi
+
 #==============================================================================
 # VALIDATION RESULT
 #==============================================================================
