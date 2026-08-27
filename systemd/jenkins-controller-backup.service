@@ -1,0 +1,20 @@
+#==============================================================================
+# JENKINS CONTROLLER BACKUP SERVICE
+#==============================================================================
+
+#==============================================================================
+# UNIT IDENTITY
+#==============================================================================
+
+[Unit]
+Description=Back up Jenkins controller state
+Requires=jenkins-controller.service
+After=jenkins-controller.service
+
+#==============================================================================
+# BACKUP EXECUTION
+#==============================================================================
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /opt/jenkins-controller/current/scripts/manage.sh backup

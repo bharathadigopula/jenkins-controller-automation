@@ -20,6 +20,8 @@ required_files=(
   compose.yaml
   plugins.txt
   jcasc/jenkins.yaml
+  systemd/jenkins-controller-backup.service
+  systemd/jenkins-controller-backup.timer
   systemd/jenkins-controller.service
 )
 
@@ -90,8 +92,65 @@ if docker compose version >/dev/null 2>&1; then
     docker compose --file "$repository_root/compose.yaml" config --quiet
 fi
 
-  #==============================================================================
-  # VALIDATION RESULT
-  #==============================================================================
+#==============================================================================
+# MANAGED BACKUP VALIDATION
+#==============================================================================
+
+if ! grep -Fq 'jenkins-controller-backup.timer' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'JENKINS_BACKUP_RETENTION_DAYS' "$repository_root/scripts/manage.sh"; then
+  printf 'Jenkins backup scheduling and retention must be managed in versioned automation.\n' >&2
+  exit 1
+fi
+
+#==============================================================================
+# OCI OUTPUT BUDGET VALIDATION
+#==============================================================================
+
+if ! grep -Fq 'apt-get update >/dev/null' "$repository_root/scripts/install-docker.sh" || \
+  ! grep -Fq 'docker version >/dev/null' "$repository_root/scripts/install-docker.sh" || \
+  ! grep -Fq 'docker compose version >/dev/null' "$repository_root/scripts/install-docker.sh"; then
+  printf 'Routine installer output must remain quiet so OCI retains diagnostics.\n' >&2
+  exit 1
+fi
+
+#==============================================================================
+# OCI BOOTSTRAP PAYLOAD VALIDATION
+#==============================================================================
+
+sample_arguments=$(jq -cn '[
+  "deploy",
+  "bharathadigopula/jenkins-controller-automation",
+  "v1.0.4",
+  "https://jenkins.bharathcloudops.com",
+  "10.10.10.68",
+  "",
+  "{\"admin_password\":\"AAAAAAAAAAAAAAAAAAAAAAAA\",\"github_token\":\"github-token-at-least-twenty\"}"
+]')
+argument_line=$(jq -r '[.[] | @sh] | "set -- " + join(" ")' <<< "$sample_arguments")
+rendered_size=$(printf '%s\n%s' "$argument_line" "$(cat "$repository_root/scripts/bootstrap.sh")" | wc -c | tr -d ' ')
+if (( rendered_size > 4096 )); then
+  printf 'Rendered Jenkins bootstrap exceeds the OCI 4096-byte inline limit.\n' >&2
+  exit 1
+fi
+
+#==============================================================================
+# COMPREHENSIVE VERIFICATION VALIDATION
+#==============================================================================
+
+for readiness_marker in \
+  jenkins_service=ready \
+  jenkins_authentication=ready \
+  jenkins_metrics=ready \
+  jenkins_configuration=ready \
+  jenkins_backup_timer=ready; do
+  if ! grep -Fq "$readiness_marker" "$repository_root/scripts/manage.sh"; then
+    printf 'Missing Jenkins verification marker: %s\n' "$readiness_marker" >&2
+    exit 1
+  fi
+done
+
+#==============================================================================
+# VALIDATION RESULT
+#==============================================================================
 
 printf 'jenkins_validation=ready\n'

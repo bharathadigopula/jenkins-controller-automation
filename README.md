@@ -83,9 +83,10 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.0 \
+  v1.0.4 \
   https://jenkins.example.com \
-  10.0.0.20
+  10.0.0.20 \
+  ""
 ```
 
 Use `deploy` explicitly and append the secret-manager JSON as the final argument for mutation.
@@ -104,12 +105,14 @@ LIFECYCLE OPERATIONS
 | `dry-run` | No | Validates and reports the release path |
 | `deploy` | Yes | Builds and starts the controller through systemd |
 | `upgrade` | Yes | Deploys a new release and retains the prior release |
-| `verify` | No | Checks login and Prometheus endpoints |
+| `verify` | No | Checks the service, authentication, metrics, initialized state, managed credentials, and backup timer |
+| `status` | No | Reports systemd, backup timer, and Compose state |
 | `backup` | Yes | Stops Jenkins and archives `JENKINS_HOME` |
 | `restore` | Yes | Restores `JENKINS_RESTORE_ARCHIVE` |
 | `rollback` | Yes | Exchanges current and previous releases |
+| `test-restore` | Yes | Creates a fresh backup, restores it, and runs comprehensive verification |
 
-Backups are written root-only under `/var/backups/jenkins-controller` by default. Copy them to durable object storage with a separate, versioned backup job and perform a restore test after initial deployment and material upgrades.
+`jenkins-controller-backup.timer` runs daily at 03:00 with a random delay of up to 15 minutes. Backups are written root-only under `/var/backups/jenkins-controller` and archives older than seven days are removed. Copy retained archives to durable object storage with a separate, versioned backup job.
 
 <!--
 ==============================================================================

@@ -90,19 +90,19 @@ printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.do
 # PINNED DOCKER PACKAGES
 #==============================================================================
 
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install --yes \
+apt-get update >/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install --yes --quiet \
   "docker-ce=$docker_engine_version" \
   "docker-ce-cli=$docker_engine_version" \
   containerd.io \
   docker-buildx-plugin \
-  "docker-compose-plugin=$docker_compose_version"
+  "docker-compose-plugin=$docker_compose_version" >/dev/null
 
 #==============================================================================
 # DOCKER RUNTIME VALIDATION
 #==============================================================================
 
 systemctl enable --now docker
-docker version
-docker compose version
+docker version >/dev/null
+docker compose version >/dev/null
 printf 'docker_install=ready\n'
