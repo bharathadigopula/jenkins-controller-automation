@@ -154,6 +154,9 @@ verify_controller() {
   local anonymous_status
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
   local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local metrics_content_type
+  local metrics_details
+  local metrics_size
 
   if [[ "$(docker compose \
     --project-directory "$install_root/current" \
@@ -171,9 +174,17 @@ verify_controller() {
     printf 'Anonymous Jenkins management access returned HTTP %s instead of 403.\n' "$anonymous_status" >&2
     return 1
   fi
-  if ! curl --fail --silent --show-error \
+  if ! metrics_details=$(curl --fail --silent --show-error --output /dev/null \
+    --write-out $'%{content_type}\n%{size_download}' \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
-    "$controller_origin/prometheus/" | grep -E '^# (HELP|TYPE) [a-zA-Z_:][a-zA-Z0-9_:]* ' >/dev/null; then
+    "$controller_origin/prometheus/"); then
+    printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
+    return 1
+  fi
+  metrics_content_type=${metrics_details%%$'\n'*}
+  metrics_size=${metrics_details##*$'\n'}
+  if [[ ! "$metrics_content_type" =~ ^(text/plain|application/openmetrics-text)(\;|$) || \
+    ! "$metrics_size" =~ ^[0-9]+$ || "$metrics_size" == "0" ]]; then
     printf 'Jenkins Prometheus metrics are unavailable.\n' >&2
     return 1
   fi
