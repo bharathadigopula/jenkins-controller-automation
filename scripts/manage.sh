@@ -279,6 +279,7 @@ restore_controller() {
 
 test_restore_controller() {
   backup_controller
+  printf 'jenkins_test_restore=ready\n'
   JENKINS_RESTORE_ARCHIVE="$archive_path" restore_controller
   printf 'jenkins_test_restore=ready\n'
 }
