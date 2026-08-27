@@ -85,7 +85,8 @@ deploy_controller() {
   install -d -m 0700 "$release_path/secrets"
   jq -r '.admin_password' <<< "$secret_bundle" > "$release_path/secrets/jenkins-admin-password"
   jq -r '.github_token' <<< "$secret_bundle" > "$release_path/secrets/github-token"
-  chmod 0600 "$release_path/secrets/jenkins-admin-password" "$release_path/secrets/github-token"
+  chown 1000:1000 "$release_path/secrets/jenkins-admin-password" "$release_path/secrets/github-token"
+  chmod 0400 "$release_path/secrets/jenkins-admin-password" "$release_path/secrets/github-token"
   write_environment
 
   if [[ -L "$install_root/current" ]]; then
