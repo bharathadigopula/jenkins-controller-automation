@@ -111,6 +111,11 @@ if ! grep -Fq 'jenkins-controller-backup.timer' "$repository_root/scripts/manage
   exit 1
 fi
 
+if ! grep -Fq 'systemctl restart jenkins-controller.service' "$repository_root/scripts/manage.sh"; then
+  printf 'Deployment must restart the Jenkins service to activate each immutable release.\n' >&2
+  exit 1
+fi
+
 #==============================================================================
 # OCI OUTPUT BUDGET VALIDATION
 #==============================================================================
@@ -129,7 +134,7 @@ fi
 sample_arguments=$(jq -cn '[
   "deploy",
   "bharathadigopula/jenkins-controller-automation",
-  "v1.0.6",
+  "v1.0.7",
   "https://jenkins.bharathcloudops.com",
   "10.10.10.68",
   "",
