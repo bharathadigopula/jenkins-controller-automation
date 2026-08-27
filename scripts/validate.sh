@@ -172,8 +172,9 @@ if ! grep -Fq -- '--user ' "$repository_root/scripts/manage.sh" || \
 fi
 
 if ! grep -Fq 'controller_origin/prometheus/' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq "grep -E '^# (HELP|TYPE) " "$repository_root/scripts/manage.sh"; then
-  printf 'Jenkins metrics verification must validate Prometheus exposition output.\n' >&2
+  ! grep -Fq 'application/openmetrics-text' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq '%{size_download}' "$repository_root/scripts/manage.sh"; then
+  printf 'Jenkins metrics verification must validate non-empty Prometheus content.\n' >&2
   exit 1
 fi
 
