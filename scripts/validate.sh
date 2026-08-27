@@ -172,8 +172,8 @@ if ! grep -Fq -- '--user ' "$repository_root/scripts/manage.sh" || \
 fi
 
 if ! grep -Fq 'controller_origin/prometheus/' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq "grep -F 'default_jenkins_version_info' >/dev/null" "$repository_root/scripts/manage.sh"; then
-  printf 'Jenkins metrics verification must follow the pinned Prometheus plugin contract.\n' >&2
+  ! grep -Fq "grep -E '^# (HELP|TYPE) " "$repository_root/scripts/manage.sh"; then
+  printf 'Jenkins metrics verification must validate Prometheus exposition output.\n' >&2
   exit 1
 fi
 
