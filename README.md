@@ -43,7 +43,8 @@ SECURITY MODEL
 - Anonymous access and user signup are disabled.
 - Native Jenkins login remains required behind any identity-aware proxy.
 - The administrator password and GitHub token are stored under a root-only host directory and mounted as Docker secrets readable only by the non-root Jenkins container user.
-- JCasC installs a `github-token` secret-text credential for private repository access.
+- JCasC installs a `github-token` secret-text credential for API operations and a `github-scm` username/token credential for private repository checkout.
+- JCasC pins `jenkins-pipeline-templates v1.1.0` and creates the `configure-production-jenkins` and `configure-production-monitoring` jobs from the private host-config repository.
 - The HTTP listener should bind to a private address and be published only through authenticated outbound ingress.
 
 The deployment secret is a single-line JSON object supplied by a secret manager:
@@ -88,7 +89,7 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.22 \
+  v1.0.23 \
   https://jenkins.example.com \
   10.0.0.20 \
   ""
@@ -110,7 +111,7 @@ LIFECYCLE OPERATIONS
 | `dry-run` | No | Validates and reports the release path |
 | `deploy` | Yes | Builds and starts the controller through systemd |
 | `upgrade` | Yes | Deploys a new release and retains the prior release |
-| `verify` | No | Checks the running core version, service, authentication, metrics, initialised state, managed credentials, backup timer, and health watchdog |
+| `verify` | No | Checks the running core version, service, authentication, metrics, initialised state, managed credentials, production jobs, backup timer, and health watchdog |
 | `status` | No | Reports controller version, bounded metrics response metadata, backup timer, health watchdog, and Compose state; exits nonzero for an inactive component |
 | `backup` | Yes | Stops Jenkins and archives `JENKINS_HOME` |
 | `restore` | Yes | Restores `JENKINS_RESTORE_ARCHIVE` |
@@ -129,7 +130,9 @@ CONFIGURATION AS CODE
 
 ## Configuration As Code
 
-`jcasc/jenkins.yaml` controls executor count, local authentication, authorization, environment defaults, the GitHub credential, and controller URL. Jenkins core provides its default CSRF crumb issuer; the deprecated JCasC `crumbIssuer` section is forbidden because Jenkins 2.555.1 and newer cancel startup when it is present. Change controller configuration in source and redeploy an immutable release; do not edit production settings in the Jenkins UI.
+`jcasc/jenkins.yaml` controls executor count, local authentication, authorization, environment defaults, GitHub credentials, the pinned shared library, managed production jobs, and controller URL. Jenkins core provides its default CSRF crumb issuer; the deprecated JCasC `crumbIssuer` section is forbidden because Jenkins 2.555.1 and newer cancel startup when it is present. Change controller configuration in source and redeploy an immutable release; do not edit production settings in the Jenkins UI.
+
+The managed jobs read `Jenkinsfile.jenkins` and `Jenkinsfile.monitoring` from `bharath-oci-host-config/main`. They use the controller's OCI instance principal, resolve immutable automation tags from production JSON, execute remote validation before mutations, and require Jenkins approval for mutating actions. Jenkins controller mutations run in a detached sibling tool container so they survive the controller restart; run the non-mutating `verify` action after Jenkins returns. Monitoring deployment verifies its protected public route in the same pipeline.
 
 The plugin catalogue in `plugins.txt` is explicit and duplicate-checked. Update Jenkins core and plugins together, validate the image build, back up `JENKINS_HOME`, then deploy through `upgrade`.
 
@@ -141,11 +144,11 @@ RECOVERY BOUNDARY
 
 ## Recovery Boundary
 
-Jenkins must not be its own only rebuild mechanism. Preserve a manual emergency workflow outside Jenkins that can:
+Jenkins is the primary production pipeline executor, but it cannot be its own only bootstrap mechanism. Preserve the versioned GitHub Actions workflow as an external recovery path that can:
 
 1. Provision or recover the host.
 2. Retrieve this repository by immutable tag.
 3. Retrieve the secret bundle from a secret manager.
 4. Execute `dry-run` and then `deploy` through the cloud remote-command service.
 
-Routine repository validation can move to Jenkins only after controller backup and restore have been verified.
+The one-time migration requires the Terraform-managed automation-controller IAM policy before Jenkins can dispatch Run Commands with its instance principal. Emergency manual bootstrap actions must match merged repository code and must be followed by the same verification performed by the managed Jenkins jobs.

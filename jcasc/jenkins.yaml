@@ -56,11 +56,73 @@ credentials:
               id: github-token
               secret: ${GITHUB_TOKEN}
               description: GitHub automation token
+          - usernamePassword:
+              scope: GLOBAL
+              id: github-scm
+              username: bharathadigopula
+              password: ${GITHUB_TOKEN}
+              description: GitHub source control credential
 
 #==============================================================================
 # CONTROLLER LOCATION
 #==============================================================================
 
 unclassified:
+  globalLibraries:
+    libraries:
+      - name: jenkins-pipeline-templates
+        defaultVersion: v1.1.0
+        allowVersionOverride: true
+        implicit: false
+        includeInChangesets: true
+        retriever:
+          modernSCM:
+            scm:
+              gitSource:
+                remote: https://github.com/bharathadigopula/jenkins-pipeline-templates.git
   location:
     url: ${JENKINS_URL}
+
+#==============================================================================
+# MANAGED PRODUCTION JOBS
+#==============================================================================
+
+jobs:
+  - script: >
+      pipelineJob('configure-production-jenkins') {
+        description('Repository-managed Jenkins controller lifecycle')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/bharathadigopula/bharath-oci-host-config.git')
+                  credentials('github-scm')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile.jenkins')
+            lightweight(true)
+          }
+        }
+      }
+  - script: >
+      pipelineJob('configure-production-monitoring') {
+        description('Repository-managed monitoring stack lifecycle')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/bharathadigopula/bharath-oci-host-config.git')
+                  credentials('github-scm')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile.monitoring')
+            lightweight(true)
+          }
+        }
+      }
