@@ -103,7 +103,10 @@ deploy_controller() {
   install -m 0644 "$release_path/systemd/jenkins-controller-health.timer" /etc/systemd/system/jenkins-controller-health.timer
   systemctl daemon-reload
   systemctl enable jenkins-controller.service
-  systemctl restart jenkins-controller.service
+  if ! systemctl restart jenkins-controller.service; then
+    journalctl --unit jenkins-controller.service --no-pager --lines 200 >&2
+    return 1
+  fi
   systemctl enable --now jenkins-controller-backup.timer
   systemctl enable --now jenkins-controller-health.timer
   printf 'jenkins_deploy=ready\n'
@@ -191,6 +194,9 @@ verify_controller() {
   local anonymous_status
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
   local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local expected_controller_image
+  local expected_controller_version
+  local running_controller_version
 
   if [[ "$(docker compose \
     --project-directory "$install_root/current" \
@@ -202,6 +208,16 @@ verify_controller() {
   fi
 
   wait_for_endpoint "$controller_origin/login"
+  expected_controller_image=$(sed -n 's/^JENKINS_CONTROLLER_VERSION=//p' "$install_root/current/.env")
+  expected_controller_version=${expected_controller_image%-lts-jdk21}
+  running_controller_version=$(curl --fail --silent --show-error \
+    --dump-header - --output /dev/null "$controller_origin/login" | \
+    tr -d '\r' | sed -n 's/^X-Jenkins:[[:space:]]*//Ip' | tail -n 1)
+  if [[ "$running_controller_version" != "$expected_controller_version" ]]; then
+    printf 'Running Jenkins version %s does not match active release %s.\n' \
+      "${running_controller_version:-unknown}" "$expected_controller_version" >&2
+    return 1
+  fi
   wait_for_metrics "$controller_origin/prometheus/" "$admin_password_file"
   anonymous_status=$(curl --silent --output /dev/null --write-out '%{http_code}' "$controller_origin/manage")
   if [[ "$anonymous_status" != "403" ]]; then
@@ -236,6 +252,7 @@ verify_controller() {
     printf 'jenkins_health_timer=ready\n'
   fi
   printf 'jenkins_service=ready\n'
+  printf 'jenkins_version=%s\n' "$running_controller_version"
   printf 'jenkins_authentication=ready\n'
   printf 'jenkins_metrics=ready\n'
   printf 'jenkins_configuration=ready\n'
