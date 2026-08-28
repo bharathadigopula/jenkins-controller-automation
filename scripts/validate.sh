@@ -207,6 +207,16 @@ if ! grep -Fq 'X-Jenkins:' "$repository_root/scripts/manage.sh" || \
   exit 1
 fi
 
+if ! sed -n '/deploy_controller()/,/^}/p' "$repository_root/scripts/manage.sh" | \
+  grep -Fq "touch \"\$maintenance_file\"" || \
+  ! sed -n '/deploy_controller()/,/^}/p' "$repository_root/scripts/manage.sh" | \
+    grep -Fq 'systemctl stop jenkins-controller-health.timer' || \
+  ! sed -n '/deploy_controller()/,/^}/p' "$repository_root/scripts/manage.sh" | \
+    grep -Fq "trap 'rm -f \"\$maintenance_file\"' EXIT"; then
+  printf 'Deployment must suppress watchdog recovery until verification completes.\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'jenkins_metrics_http_code=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_metrics_content_type=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_metrics_size=' "$repository_root/scripts/manage.sh" || \

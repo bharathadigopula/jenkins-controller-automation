@@ -103,6 +103,10 @@ deploy_controller() {
   install -m 0644 "$release_path/systemd/jenkins-controller-health.timer" /etc/systemd/system/jenkins-controller-health.timer
   systemctl daemon-reload
   systemctl enable jenkins-controller.service
+  touch "$maintenance_file"
+  rm -f "$health_failure_file"
+  trap 'rm -f "$maintenance_file"' EXIT
+  systemctl stop jenkins-controller-health.timer >/dev/null 2>&1 || true
   if ! systemctl restart jenkins-controller.service; then
     journalctl --unit jenkins-controller.service --no-pager --lines 200 >&2
     return 1
@@ -111,6 +115,8 @@ deploy_controller() {
   systemctl enable --now jenkins-controller-health.timer
   printf 'jenkins_deploy=ready\n'
   verify_controller
+  rm -f "$maintenance_file"
+  trap - EXIT
   printf 'jenkins_deploy=ready\n'
 }
 
