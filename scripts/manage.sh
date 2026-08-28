@@ -365,9 +365,12 @@ recover_controller() {
 #==============================================================================
 
 status_controller() {
+  local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
   local service_state
   local backup_timer_state
+  local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
   local health_timer_state
+  local running_controller_version
 
   service_state=$(systemctl is-active jenkins-controller.service || true)
   backup_timer_state=$(systemctl is-active jenkins-controller-backup.timer || true)
@@ -380,6 +383,19 @@ status_controller() {
   printf 'jenkins_systemd=%s\n' "$service_state"
   printf 'jenkins_backup_timer=%s\n' "$backup_timer_state"
   printf 'jenkins_health_timer=%s\n' "$health_timer_state"
+  running_controller_version=$(curl --connect-timeout 3 --max-time 10 --silent --show-error \
+    --dump-header - --output /dev/null "$controller_origin/login" 2>/dev/null | \
+    tr -d '\r' | sed -n 's/^X-Jenkins:[[:space:]]*//Ip' | tail -n 1)
+  printf 'jenkins_version=%s\n' "${running_controller_version:-unavailable}"
+  if [[ -r "$admin_password_file" ]]; then
+    curl --connect-timeout 3 --max-time 10 --silent --show-error \
+      --output /dev/null \
+      --write-out $'jenkins_metrics_http_code=%{http_code}\njenkins_metrics_content_type=%{content_type}\njenkins_metrics_size=%{size_download}\njenkins_metrics_redirect=%{redirect_url}\n' \
+      --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+      "$controller_origin/prometheus/" 2>/dev/null || printf 'jenkins_metrics_probe=failed\n'
+  else
+    printf 'jenkins_metrics_probe=missing_password_file\n'
+  fi
   show_controller_diagnostics
 
   if [[ "$service_state" != "active" || "$backup_timer_state" != "active" || \

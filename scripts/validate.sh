@@ -207,6 +207,14 @@ if ! grep -Fq 'X-Jenkins:' "$repository_root/scripts/manage.sh" || \
   exit 1
 fi
 
+if ! grep -Fq 'jenkins_metrics_http_code=' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_metrics_content_type=' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_metrics_size=' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq -- '--max-time 10' "$repository_root/scripts/manage.sh"; then
+  printf 'Status must report bounded Jenkins metrics response diagnostics.\n' >&2
+  exit 1
+fi
+
 if [[ "$(grep -Fc "printf 'jenkins_deploy=ready" "$repository_root/scripts/manage.sh")" != "2" ]] || \
   [[ "$(grep -Fc "printf 'jenkins_test_restore=ready" "$repository_root/scripts/manage.sh")" != "2" ]] || \
   ! grep -Fq 'jenkins_metrics_wait=attempt_' "$repository_root/scripts/manage.sh"; then
