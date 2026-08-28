@@ -176,11 +176,20 @@ if grep -Eq '^[[:space:]]*(crumbIssuer:|excludeClientIPFromCrumb:)' \
   exit 1
 fi
 
+if ! grep -Fq 'defaultVersion: v1.1.0' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq "pipelineJob('configure-production-jenkins')" "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq "pipelineJob('configure-production-monitoring')" "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'credentials('"'"'github-scm'"'"')' "$repository_root/jcasc/jenkins.yaml"; then
+  printf 'JCasC must provision the pinned shared library and managed production jobs.\n' >&2
+  exit 1
+fi
+
 for readiness_marker in \
   jenkins_service=ready \
   jenkins_authentication=ready \
   jenkins_metrics=ready \
   jenkins_configuration=ready \
+  jenkins_jobs=ready \
   jenkins_backup_timer=ready \
   jenkins_health_timer=ready; do
   if ! grep -Fq "$readiness_marker" "$repository_root/scripts/manage.sh"; then

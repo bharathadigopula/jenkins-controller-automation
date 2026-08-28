@@ -200,6 +200,7 @@ verify_controller() {
   local anonymous_status
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
   local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local controller_jobs
   local expected_controller_image
   local expected_controller_version
   local running_controller_version
@@ -240,8 +241,20 @@ verify_controller() {
   if ! docker compose \
     --project-directory "$install_root/current" \
     --file "$install_root/current/compose.yaml" \
-    exec --no-TTY jenkins test -f /var/jenkins_home/credentials.xml; then
+    exec --no-TTY jenkins sh -c \
+      "grep -Fq '<id>github-token</id>' /var/jenkins_home/credentials.xml && grep -Fq '<id>github-scm</id>' /var/jenkins_home/credentials.xml"; then
     printf 'Jenkins managed credentials were not provisioned.\n' >&2
+    return 1
+  fi
+  controller_jobs=$(curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/api/json?tree=jobs[name]")
+  if ! jq -e '
+    [.jobs[].name] as $jobs |
+    ($jobs | index("configure-production-jenkins")) != null and
+    ($jobs | index("configure-production-monitoring")) != null
+  ' <<< "$controller_jobs" >/dev/null; then
+    printf 'Jenkins managed production jobs were not provisioned.\n' >&2
     return 1
   fi
   if ! systemctl is-enabled --quiet jenkins-controller-backup.timer || \
@@ -262,6 +275,7 @@ verify_controller() {
   printf 'jenkins_authentication=ready\n'
   printf 'jenkins_metrics=ready\n'
   printf 'jenkins_configuration=ready\n'
+  printf 'jenkins_jobs=ready\n'
   printf 'jenkins_backup_timer=ready\n'
   printf 'jenkins_verify=ready\n'
 }
