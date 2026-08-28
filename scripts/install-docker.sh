@@ -15,8 +15,10 @@ set -euo pipefail
 #==============================================================================
 
 action="${1:-validate}"
-docker_engine_version="${DOCKER_ENGINE_VERSION:-5:28.3.3-1~ubuntu.24.04~noble}"
-docker_compose_version="${DOCKER_COMPOSE_VERSION:-2.38.2-1~ubuntu.24.04~noble}"
+containerd_version="${CONTAINERD_VERSION:-2.3.3-1~ubuntu.24.04~noble}"
+docker_buildx_version="${DOCKER_BUILDX_VERSION:-0.36.1-1~ubuntu.24.04~noble}"
+docker_compose_version="${DOCKER_COMPOSE_VERSION:-5.5.0-1~ubuntu.24.04~noble}"
+docker_engine_version="${DOCKER_ENGINE_VERSION:-5:29.7.2-1~ubuntu.24.04~noble}"
 
 #==============================================================================
 # ACTION VALIDATION
@@ -59,7 +61,8 @@ fi
 #==============================================================================
 
 if [[ "$action" == "dry-run" ]]; then
-  printf 'Would install Docker Engine %s and Compose %s.\n' "$docker_engine_version" "$docker_compose_version"
+  printf 'Would install Docker Engine %s, containerd %s, Buildx %s, and Compose %s.\n' \
+    "$docker_engine_version" "$containerd_version" "$docker_buildx_version" "$docker_compose_version"
   printf 'docker_install_dry_run=ready\n'
   exit 0
 fi
@@ -94,8 +97,8 @@ apt-get update >/dev/null
 DEBIAN_FRONTEND=noninteractive apt-get install --yes --quiet \
   "docker-ce=$docker_engine_version" \
   "docker-ce-cli=$docker_engine_version" \
-  containerd.io \
-  docker-buildx-plugin \
+  "containerd.io=$containerd_version" \
+  "docker-buildx-plugin=$docker_buildx_version" \
   "docker-compose-plugin=$docker_compose_version" >/dev/null
 
 #==============================================================================
