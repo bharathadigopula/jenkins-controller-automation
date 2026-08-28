@@ -88,7 +88,7 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.20 \
+  v1.0.21 \
   https://jenkins.example.com \
   10.0.0.20 \
   ""
@@ -119,7 +119,7 @@ LIFECYCLE OPERATIONS
 
 `jenkins-controller-backup.timer` runs daily at 03:00 with a random delay of up to 15 minutes. Backups are written root-only under `/var/backups/jenkins-controller` and archives older than seven days are removed. Copy retained archives to durable object storage with a separate, versioned backup job.
 
-`jenkins-controller-health.timer` runs every minute. After three consecutive failed login-page checks, its watchdog restarts the systemd service and verifies recovery. Backup and restore operations create a maintenance sentinel so intentional downtime cannot trigger the watchdog.
+`jenkins-controller-health.timer` runs every minute. After three consecutive failed login-page checks, its watchdog restarts the systemd service and verifies recovery. Deploy, backup, and restore operations create a maintenance sentinel so intentional downtime and extended post-upgrade startup cannot trigger the watchdog.
 
 <!--
 ==============================================================================
