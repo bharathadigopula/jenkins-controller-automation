@@ -170,6 +170,12 @@ fi
 # COMPREHENSIVE VERIFICATION VALIDATION
 #==============================================================================
 
+if grep -Eq '^[[:space:]]*(crumbIssuer:|excludeClientIPFromCrumb:)' \
+  "$repository_root/jcasc/jenkins.yaml"; then
+  printf 'Jenkins 2.555.1 and newer reject the deprecated JCasC crumbIssuer configuration.\n' >&2
+  exit 1
+fi
+
 for readiness_marker in \
   jenkins_service=ready \
   jenkins_authentication=ready \

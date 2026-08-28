@@ -88,7 +88,7 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.21 \
+  v1.0.22 \
   https://jenkins.example.com \
   10.0.0.20 \
   ""
@@ -129,7 +129,7 @@ CONFIGURATION AS CODE
 
 ## Configuration As Code
 
-`jcasc/jenkins.yaml` controls executor count, local authentication, authorization, CSRF protection, environment defaults, the GitHub credential, and controller URL. Change controller configuration in source and redeploy an immutable release; do not edit production settings in the Jenkins UI.
+`jcasc/jenkins.yaml` controls executor count, local authentication, authorization, environment defaults, the GitHub credential, and controller URL. Jenkins core provides its default CSRF crumb issuer; the deprecated JCasC `crumbIssuer` section is forbidden because Jenkins 2.555.1 and newer cancel startup when it is present. Change controller configuration in source and redeploy an immutable release; do not edit production settings in the Jenkins UI.
 
 The plugin catalogue in `plugins.txt` is explicit and duplicate-checked. Update Jenkins core and plugins together, validate the image build, back up `JENKINS_HOME`, then deploy through `upgrade`.
 
