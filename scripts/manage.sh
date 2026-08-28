@@ -23,6 +23,8 @@ release_key=${release_ref//[^a-zA-Z0-9._-]/-}
 release_path="$install_root/releases/$release_key"
 backup_directory="${JENKINS_BACKUP_DIRECTORY:-/var/backups/jenkins-controller}"
 backup_retention_days="${JENKINS_BACKUP_RETENTION_DAYS:-7}"
+health_failure_file="${JENKINS_HEALTH_FAILURE_FILE:-/run/jenkins-controller-health-failures}"
+maintenance_file="${JENKINS_MAINTENANCE_FILE:-/run/jenkins-controller-maintenance}"
 
 #==============================================================================
 # CONTROLLER VALIDATION
@@ -97,10 +99,13 @@ deploy_controller() {
   install -m 0644 "$release_path/systemd/jenkins-controller.service" /etc/systemd/system/jenkins-controller.service
   install -m 0644 "$release_path/systemd/jenkins-controller-backup.service" /etc/systemd/system/jenkins-controller-backup.service
   install -m 0644 "$release_path/systemd/jenkins-controller-backup.timer" /etc/systemd/system/jenkins-controller-backup.timer
+  install -m 0644 "$release_path/systemd/jenkins-controller-health.service" /etc/systemd/system/jenkins-controller-health.service
+  install -m 0644 "$release_path/systemd/jenkins-controller-health.timer" /etc/systemd/system/jenkins-controller-health.timer
   systemctl daemon-reload
   systemctl enable jenkins-controller.service
   systemctl restart jenkins-controller.service
   systemctl enable --now jenkins-controller-backup.timer
+  systemctl enable --now jenkins-controller-health.timer
   printf 'jenkins_deploy=ready\n'
   verify_controller
   printf 'jenkins_deploy=ready\n'
@@ -222,6 +227,14 @@ verify_controller() {
     printf 'Jenkins backup timer is not enabled and active.\n' >&2
     return 1
   fi
+  if [[ -f "$install_root/current/systemd/jenkins-controller-health.timer" ]]; then
+    if ! systemctl is-enabled --quiet jenkins-controller-health.timer || \
+      ! systemctl is-active --quiet jenkins-controller-health.timer; then
+      printf 'Jenkins health timer is not enabled and active.\n' >&2
+      return 1
+    fi
+    printf 'jenkins_health_timer=ready\n'
+  fi
   printf 'jenkins_service=ready\n'
   printf 'jenkins_authentication=ready\n'
   printf 'jenkins_metrics=ready\n'
@@ -239,11 +252,13 @@ backup_controller() {
   install -d -m 0700 "$backup_directory"
   archive_path="$backup_directory/jenkins-home-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
   volume_path=$(docker volume inspect jenkins-controller_jenkins-home --format '{{ .Mountpoint }}')
+  touch "$maintenance_file"
   systemctl stop jenkins-controller.service
-  trap 'systemctl start jenkins-controller.service' EXIT
+  trap 'systemctl start jenkins-controller.service; rm -f "$maintenance_file"' EXIT
   tar --create --gzip --file "$archive_path" --directory "$volume_path" .
   chmod 0600 "$archive_path"
   systemctl start jenkins-controller.service
+  rm -f "$maintenance_file"
   trap - EXIT
   find "$backup_directory" -maxdepth 1 -type f -name 'jenkins-home-*.tar.gz' \
     -mtime "+$backup_retention_days" -delete
@@ -263,11 +278,13 @@ restore_controller() {
     exit 1
   fi
   volume_path=$(docker volume inspect jenkins-controller_jenkins-home --format '{{ .Mountpoint }}')
+  touch "$maintenance_file"
   systemctl stop jenkins-controller.service
-  trap 'systemctl start jenkins-controller.service' EXIT
+  trap 'systemctl start jenkins-controller.service; rm -f "$maintenance_file"' EXIT
   find "$volume_path" -mindepth 1 -delete
   tar --extract --gzip --file "$archive_path" --directory "$volume_path"
   systemctl start jenkins-controller.service
+  rm -f "$maintenance_file"
   trap - EXIT
   verify_controller
   printf 'jenkins_restore=ready\n'
@@ -285,14 +302,74 @@ test_restore_controller() {
 }
 
 #==============================================================================
+# CONTROLLER HEALTH RECOVERY
+#==============================================================================
+
+recover_controller() {
+  local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local failures=0
+
+  require_root
+  if [[ -f "$maintenance_file" ]]; then
+    rm -f "$health_failure_file"
+    printf 'jenkins_health=maintenance\n'
+    return 0
+  fi
+  if curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
+    "$controller_origin/login" >/dev/null 2>&1; then
+    rm -f "$health_failure_file"
+    printf 'jenkins_health=ready\n'
+    return 0
+  fi
+
+  if [[ -f "$health_failure_file" ]]; then
+    failures=$(<"$health_failure_file")
+    if [[ ! "$failures" =~ ^[0-9]+$ ]]; then
+      failures=0
+    fi
+  fi
+  failures=$((failures + 1))
+  printf '%s\n' "$failures" > "$health_failure_file"
+
+  if (( failures < 3 )); then
+    printf 'jenkins_health=degraded failure_count=%s\n' "$failures"
+    return 0
+  fi
+
+  printf 'jenkins_health=restarting failure_count=%s\n' "$failures"
+  systemctl restart jenkins-controller.service
+  wait_for_endpoint "$controller_origin/login"
+  rm -f "$health_failure_file"
+  printf 'jenkins_health=recovered\n'
+}
+
+#==============================================================================
 # CONTROLLER STATUS
 #==============================================================================
 
 status_controller() {
+  local service_state
+  local backup_timer_state
+  local health_timer_state
+
+  service_state=$(systemctl is-active jenkins-controller.service || true)
+  backup_timer_state=$(systemctl is-active jenkins-controller-backup.timer || true)
+  health_timer_state=unavailable
+  if [[ -f "$install_root/current/systemd/jenkins-controller-health.timer" ]]; then
+    health_timer_state=$(systemctl is-active jenkins-controller-health.timer || true)
+  fi
+
   printf 'jenkins_status=ready\n'
-  printf 'jenkins_systemd=%s\n' "$(systemctl is-active jenkins-controller.service || true)"
-  printf 'jenkins_backup_timer=%s\n' "$(systemctl is-active jenkins-controller-backup.timer || true)"
+  printf 'jenkins_systemd=%s\n' "$service_state"
+  printf 'jenkins_backup_timer=%s\n' "$backup_timer_state"
+  printf 'jenkins_health_timer=%s\n' "$health_timer_state"
   show_controller_diagnostics
+
+  if [[ "$service_state" != "active" || "$backup_timer_state" != "active" || \
+    "$health_timer_state" == "inactive" || "$health_timer_state" == "failed" ]]; then
+    printf 'Jenkins controller or a managed timer is not active.\n' >&2
+    return 1
+  fi
 }
 
 #==============================================================================
@@ -307,8 +384,21 @@ rollback_controller() {
   fi
   previous_release=$(readlink -f "$install_root/previous")
   current_release=$(readlink -f "$install_root/current")
+  systemctl disable --now jenkins-controller-health.timer >/dev/null 2>&1 || true
   ln -sfn "$previous_release" "$install_root/current"
   ln -sfn "$current_release" "$install_root/previous"
+
+  if [[ -f "$previous_release/systemd/jenkins-controller-health.service" && \
+    -f "$previous_release/systemd/jenkins-controller-health.timer" ]]; then
+    install -m 0644 "$previous_release/systemd/jenkins-controller-health.service" /etc/systemd/system/jenkins-controller-health.service
+    install -m 0644 "$previous_release/systemd/jenkins-controller-health.timer" /etc/systemd/system/jenkins-controller-health.timer
+    systemctl daemon-reload
+    systemctl enable --now jenkins-controller-health.timer
+  else
+    rm -f /etc/systemd/system/jenkins-controller-health.service /etc/systemd/system/jenkins-controller-health.timer
+    systemctl daemon-reload
+  fi
+
   systemctl restart jenkins-controller.service
   verify_controller
   printf 'jenkins_rollback=ready\n'
@@ -335,6 +425,9 @@ case "$action" in
     ;;
   status)
     status_controller
+    ;;
+  recover)
+    recover_controller
     ;;
   backup)
     backup_controller

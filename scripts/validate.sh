@@ -22,6 +22,8 @@ required_files=(
   jcasc/jenkins.yaml
   systemd/jenkins-controller-backup.service
   systemd/jenkins-controller-backup.timer
+  systemd/jenkins-controller-health.service
+  systemd/jenkins-controller-health.timer
   systemd/jenkins-controller.service
 )
 
@@ -116,6 +118,22 @@ if ! grep -Fq 'systemctl restart jenkins-controller.service' "$repository_root/s
   exit 1
 fi
 
+if ! grep -Fq 'systemctl enable --now jenkins-controller-health.timer' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'failures < 3' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins-controller-maintenance' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'systemctl restart jenkins-controller.service' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'OnUnitInactiveSec=1m' "$repository_root/systemd/jenkins-controller-health.timer" || \
+  grep -Fq 'Requires=jenkins-controller.service' "$repository_root/systemd/jenkins-controller-health.service"; then
+  printf 'Jenkins health recovery must use a managed timer and consecutive failure threshold.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'service_state" != "active' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'backup_timer_state" != "active' "$repository_root/scripts/manage.sh"; then
+  printf 'Jenkins status must fail when the controller or backup timer is inactive.\n' >&2
+  exit 1
+fi
+
 #==============================================================================
 # OCI OUTPUT BUDGET VALIDATION
 #==============================================================================
@@ -156,7 +174,8 @@ for readiness_marker in \
   jenkins_authentication=ready \
   jenkins_metrics=ready \
   jenkins_configuration=ready \
-  jenkins_backup_timer=ready; do
+  jenkins_backup_timer=ready \
+  jenkins_health_timer=ready; do
   if ! grep -Fq "$readiness_marker" "$repository_root/scripts/manage.sh"; then
     printf 'Missing Jenkins verification marker: %s\n' "$readiness_marker" >&2
     exit 1
