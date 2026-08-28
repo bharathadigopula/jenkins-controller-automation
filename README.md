@@ -88,7 +88,7 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.18 \
+  v1.0.19 \
   https://jenkins.example.com \
   10.0.0.20 \
   ""
@@ -110,7 +110,7 @@ LIFECYCLE OPERATIONS
 | `dry-run` | No | Validates and reports the release path |
 | `deploy` | Yes | Builds and starts the controller through systemd |
 | `upgrade` | Yes | Deploys a new release and retains the prior release |
-| `verify` | No | Checks the service, authentication, metrics, initialised state, managed credentials, backup timer, and health watchdog |
+| `verify` | No | Checks the running core version, service, authentication, metrics, initialised state, managed credentials, backup timer, and health watchdog |
 | `status` | No | Reports controller, backup timer, health watchdog, and Compose state; exits nonzero for an inactive component |
 | `backup` | Yes | Stops Jenkins and archives `JENKINS_HOME` |
 | `restore` | Yes | Restores `JENKINS_RESTORE_ARCHIVE` |

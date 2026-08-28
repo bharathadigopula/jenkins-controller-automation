@@ -200,6 +200,13 @@ if ! grep -Fq 'controller_origin/prometheus/' "$repository_root/scripts/manage.s
   exit 1
 fi
 
+if ! grep -Fq 'X-Jenkins:' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_version=%s' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'journalctl --unit jenkins-controller.service' "$repository_root/scripts/manage.sh"; then
+  printf 'Deployment must report build diagnostics and verify the running Jenkins version.\n' >&2
+  exit 1
+fi
+
 if [[ "$(grep -Fc "printf 'jenkins_deploy=ready" "$repository_root/scripts/manage.sh")" != "2" ]] || \
   [[ "$(grep -Fc "printf 'jenkins_test_restore=ready" "$repository_root/scripts/manage.sh")" != "2" ]] || \
   ! grep -Fq 'jenkins_metrics_wait=attempt_' "$repository_root/scripts/manage.sh"; then
