@@ -20,6 +20,7 @@ required_files=(
   compose.yaml
   plugins.txt
   jcasc/jenkins.yaml
+  scripts/check-latest-versions.sh
   systemd/jenkins-controller-backup.service
   systemd/jenkins-controller-backup.timer
   systemd/jenkins-controller-health.service

@@ -18,7 +18,11 @@ CONTROLLER PROFILE
 
 | Setting | Default |
 | --- | --- |
-| Jenkins | `2.528.3-lts-jdk21` |
+| Jenkins | `2.568.2-lts-jdk21` |
+| Docker Engine and CLI | `29.7.2` |
+| containerd | `2.3.3` |
+| Docker Buildx | `0.36.1` |
+| Docker Compose | `5.5.0` |
 | Java heap | 512 MB initial, 1 GB maximum |
 | Container memory | 2 GB |
 | Container CPU | 0.70 CPU |
@@ -68,6 +72,7 @@ bash scripts/install-docker.sh dry-run
 ```
 
 CI also builds the complete controller image, resolving every pinned plugin against the pinned Jenkins core.
+It checks Jenkins LTS, every explicit plugin, and the complete Docker package set against official upstream metadata. A daily scheduled run reports version drift while production continues to use immutable tags.
 
 <!--
 ==============================================================================
@@ -83,7 +88,7 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.16 \
+  v1.0.18 \
   https://jenkins.example.com \
   10.0.0.20 \
   ""
@@ -105,14 +110,16 @@ LIFECYCLE OPERATIONS
 | `dry-run` | No | Validates and reports the release path |
 | `deploy` | Yes | Builds and starts the controller through systemd |
 | `upgrade` | Yes | Deploys a new release and retains the prior release |
-| `verify` | No | Checks the service, authentication, metrics, initialized state, managed credentials, and backup timer |
-| `status` | No | Reports systemd, backup timer, and Compose state |
+| `verify` | No | Checks the service, authentication, metrics, initialised state, managed credentials, backup timer, and health watchdog |
+| `status` | No | Reports controller, backup timer, health watchdog, and Compose state; exits nonzero for an inactive component |
 | `backup` | Yes | Stops Jenkins and archives `JENKINS_HOME` |
 | `restore` | Yes | Restores `JENKINS_RESTORE_ARCHIVE` |
 | `rollback` | Yes | Exchanges current and previous releases |
 | `test-restore` | Yes | Creates a fresh backup, restores it, and runs comprehensive verification |
 
 `jenkins-controller-backup.timer` runs daily at 03:00 with a random delay of up to 15 minutes. Backups are written root-only under `/var/backups/jenkins-controller` and archives older than seven days are removed. Copy retained archives to durable object storage with a separate, versioned backup job.
+
+`jenkins-controller-health.timer` runs every minute. After three consecutive failed login-page checks, its watchdog restarts the systemd service and verifies recovery. Backup and restore operations create a maintenance sentinel so intentional downtime cannot trigger the watchdog.
 
 <!--
 ==============================================================================

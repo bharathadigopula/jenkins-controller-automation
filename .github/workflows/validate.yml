@@ -17,6 +17,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
 
 #==============================================================================
@@ -52,6 +54,9 @@ jobs:
 
       - name: Validate controller configuration
         run: bash scripts/validate.sh
+
+      - name: Verify latest version pins
+        run: bash scripts/check-latest-versions.sh
 
       - name: Validate dry run
         run: bash scripts/manage.sh dry-run
