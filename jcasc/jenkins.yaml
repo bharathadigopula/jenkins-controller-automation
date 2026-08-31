@@ -8,7 +8,7 @@
 
 jenkins:
   systemMessage: Controller configuration is managed as code.
-  numExecutors: 1
+  numExecutors: 0
   mode: NORMAL
   scmCheckoutRetryCount: 2
 
@@ -43,6 +43,26 @@ jenkins:
           - key: LC_ALL
             value: C.UTF-8
 
+  #============================================================================
+  # PLATFORM BUILD AGENT
+  #============================================================================
+
+  nodes:
+    - permanent:
+        name: platform-agent
+        nodeDescription: Resource-limited Docker build agent on the platform host
+        remoteFS: /home/jenkins/agent
+        numExecutors: 1
+        mode: NORMAL
+        labelString: platform docker
+        retentionStrategy: always
+        launcher:
+          inbound:
+            workDirSettings:
+              disabled: false
+              internalDir: remoting
+              failIfWorkDirIsMissing: false
+
 #==============================================================================
 # MANAGED CREDENTIALS
 #==============================================================================
@@ -71,7 +91,7 @@ unclassified:
   globalLibraries:
     libraries:
       - name: jenkins-pipeline-templates
-        defaultVersion: v1.2.0
+        defaultVersion: v1.3.0
         allowVersionOverride: true
         implicit: false
         includeInChangesets: true

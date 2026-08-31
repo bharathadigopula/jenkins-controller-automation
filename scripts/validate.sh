@@ -17,9 +17,11 @@ set -euo pipefail
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 required_files=(
   Dockerfile
+  Dockerfile.agent
   compose.yaml
   plugins.txt
   jcasc/jenkins.yaml
+  scripts/agent-entrypoint.sh
   scripts/check-latest-versions.sh
   systemd/jenkins-controller-backup.service
   systemd/jenkins-controller-backup.timer
@@ -40,7 +42,7 @@ done
 #==============================================================================
 
 if grep -R --line-number --extended-regexp '(FROM|image:)[[:space:]]+[^[:space:]]+:latest([[:space:]]|$)' \
-  "$repository_root/Dockerfile" "$repository_root/compose.yaml"; then
+  "$repository_root/Dockerfile" "$repository_root/Dockerfile.agent" "$repository_root/compose.yaml"; then
   printf 'Container images must use pinned version tags.\n' >&2
   exit 1
 fi
@@ -69,6 +71,37 @@ fi
 
 if [[ "$(grep -vE '^[[:space:]]*(#|$)' "$repository_root/plugins.txt" | cut -d: -f1 | sort | uniq -d | wc -l | tr -d ' ')" != "0" ]]; then
   printf 'Duplicate Jenkins plugin identifiers are not allowed.\n' >&2
+  exit 1
+fi
+
+#==============================================================================
+# CONTROLLER AND AGENT ISOLATION VALIDATION
+#==============================================================================
+
+if ! grep -Fq 'numExecutors: 0' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'name: platform-agent' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'numExecutors: 1' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'labelString: platform docker' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq '.displayName == "platform-agent" and .numExecutors == 1 and .offline == false' "$repository_root/scripts/manage.sh"; then
+  printf 'Build execution must use the single platform Docker agent, not the controller.\n' >&2
+  exit 1
+fi
+
+controller_compose=$(sed -n '/^[[:space:]]*jenkins:/,/^[[:space:]]*platform-agent:/p' "$repository_root/compose.yaml")
+agent_compose=$(sed -n '/^[[:space:]]*platform-agent:/,/^secrets:/p' "$repository_root/compose.yaml")
+if grep -Fq '/var/run/docker.sock' <<< "$controller_compose" || \
+  ! grep -Fq '/var/run/docker.sock' <<< "$agent_compose" || \
+  ! grep -Fq 'cpus: "0.50"' <<< "$agent_compose" || \
+  ! grep -Fq 'memory: 2048M' <<< "$agent_compose" || \
+  ! grep -Fq -- "--groups \"\$docker_socket_gid\"" "$repository_root/scripts/agent-entrypoint.sh" || \
+  ! grep -Fq -- '--reuid 1000' "$repository_root/scripts/agent-entrypoint.sh"; then
+  printf 'Docker access and constrained resources must belong only to the platform agent.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'hudson.model.DirectoryBrowserSupport.CSP=' "$repository_root/compose.yaml" || \
+  ! grep -Eq '^ansicolor:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt"; then
+  printf 'Jenkins CSP and pinned ANSI console rendering must be enabled.\n' >&2
   exit 1
 fi
 
@@ -195,7 +228,7 @@ if grep -Eq '^[[:space:]]*(crumbIssuer:|excludeClientIPFromCrumb:)' \
   exit 1
 fi
 
-if ! grep -Fq 'defaultVersion: v1.2.0' "$repository_root/jcasc/jenkins.yaml" || \
+if ! grep -Fq 'defaultVersion: v1.3.0' "$repository_root/jcasc/jenkins.yaml" || \
   ! grep -Fq 'credentials('"'"'github-scm'"'"')' "$repository_root/jcasc/jenkins.yaml"; then
   printf 'JCasC must provision the pinned shared library and managed production jobs.\n' >&2
   exit 1
