@@ -16,5 +16,6 @@ After=jenkins-controller.service
 
 [Service]
 Type=oneshot
+EnvironmentFile=/opt/jenkins-controller/current/.env
 ExecStart=/usr/bin/bash /opt/jenkins-controller/current/scripts/manage.sh recover
 TimeoutStartSec=900

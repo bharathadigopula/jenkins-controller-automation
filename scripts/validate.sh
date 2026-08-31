@@ -114,6 +114,19 @@ if ! grep -Fq 'jenkins-controller-backup.timer' "$repository_root/scripts/manage
   exit 1
 fi
 
+backup_function=$(sed -n '/backup_controller()/,/^}/p' "$repository_root/scripts/manage.sh")
+if grep -Fq 'systemctl stop jenkins-controller.service' <<< "$backup_function" || \
+  ! grep -Fq 'quietDown' <<< "$backup_function" || \
+  ! grep -Fq 'cancelQuietDown' <<< "$backup_function" || \
+  ! grep -Fq "cookie_jar=\$(mktemp)" <<< "$backup_function" || \
+  ! grep -Fq -- "--cookie \"\$cookie_jar\"" <<< "$backup_function" || \
+  ! grep -Fq -- "--cookie-jar \"\$cookie_jar\"" <<< "$backup_function" || \
+  ! grep -Fq '.partial' <<< "$backup_function" || \
+  ! grep -Fq 'EnvironmentFile=/opt/jenkins-controller/current/.env' "$repository_root/systemd/jenkins-controller-backup.service"; then
+  printf 'Scheduled backups must remain online, preserve the CSRF session, drain executors, and publish archives atomically.\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'systemctl restart jenkins-controller.service' "$repository_root/scripts/manage.sh"; then
   printf 'Deployment must restart the Jenkins service to activate each immutable release.\n' >&2
   exit 1
@@ -123,9 +136,15 @@ if ! grep -Fq 'systemctl enable --now jenkins-controller-health.timer' "$reposit
   ! grep -Fq 'failures < 3' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins-controller-maintenance' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'systemctl restart jenkins-controller.service' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'EnvironmentFile=/opt/jenkins-controller/current/.env' "$repository_root/systemd/jenkins-controller-health.service" || \
   ! grep -Fq 'OnUnitInactiveSec=1m' "$repository_root/systemd/jenkins-controller-health.timer" || \
   grep -Fq 'Requires=jenkins-controller.service' "$repository_root/systemd/jenkins-controller-health.service"; then
   printf 'Jenkins health recovery must use a managed timer and consecutive failure threshold.\n' >&2
+  exit 1
+fi
+
+if grep -Fq 'Requires=jenkins-controller.service' "$repository_root/systemd/jenkins-controller-backup.service"; then
+  printf 'Jenkins backup must not be lifecycle-coupled to the controller service.\n' >&2
   exit 1
 fi
 
