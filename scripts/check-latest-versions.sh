@@ -137,7 +137,7 @@ while IFS='=' read -r package_name latest_version; do
 done < "$temporary_directory/latest-amd64"
 
 pinned_docker_cli_image=$(sed -n 's/^FROM docker:\([^[:space:]]*\) AS docker-cli$/\1/p' \
-  "$repository_root/Dockerfile")
+  "$repository_root/Dockerfile.agent")
 expected_docker_cli_image=${pinned_docker_engine_version#*:}
 expected_docker_cli_image=${expected_docker_cli_image%%-*}-cli
 

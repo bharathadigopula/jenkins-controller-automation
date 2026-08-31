@@ -37,28 +37,27 @@ services:
           cpus: "0.70"
           memory: 2048M
 
-        #==========================================================================
-        # CONTROLLER RUNTIME ENVIRONMENT
-        #==========================================================================
+    #=========================================================================
+    # CONTROLLER RUNTIME ENVIRONMENT
+    #=========================================================================
 
     environment:
       CASC_JENKINS_CONFIG: /var/jenkins_config/jenkins.yaml
-      JAVA_OPTS: -Xms512m -Xmx1024m -XX:+UseG1GC -Djenkins.install.runSetupWizard=false
+      JAVA_OPTS: -Xms512m -Xmx1024m -XX:+UseG1GC -Djenkins.install.runSetupWizard=false -Dhudson.model.DirectoryBrowserSupport.CSP=sandbox\ allow-same-origin\;\ default-src\ \'none\'\;\ img-src\ \'self\'\;\ style-src\ \'self\'\;
       JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
       JENKINS_OPTS: --httpPort=8080
       JENKINS_URL: ${JENKINS_URL:-http://localhost:8080}
 
     #==========================================================================
-    # DOCKER SOCKET ACCESS
-    #==========================================================================
-
-    group_add:
-      - ${DOCKER_GID:-999}
-
-    #==========================================================================
     # CONTROLLER NETWORK, SECRETS, AND STORAGE
     #==========================================================================
 
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/login"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
     ports:
       - ${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080:8080
     restart: unless-stopped
@@ -67,8 +66,60 @@ services:
       - jenkins_admin_password
     volumes:
       - ./jcasc:/var/jenkins_config:ro
-      - /var/run/docker.sock:/var/run/docker.sock
       - jenkins-home:/var/jenkins_home
+
+  #============================================================================
+  # PLATFORM AGENT SECRET BOOTSTRAP
+  #============================================================================
+
+  platform-agent-bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    image: jenkins-platform-agent:3386.v353e57a_1b_ea_0-2-jdk21
+    command: ["bootstrap"]
+    depends_on:
+      jenkins:
+        condition: service_healthy
+    environment:
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
+      JENKINS_AGENT_NAME: platform-agent
+      JENKINS_URL: http://jenkins:8080
+    restart: "no"
+    user: "0:0"
+    secrets:
+      - jenkins_admin_password
+    volumes:
+      - jenkins-agent-secret:/run/jenkins-agent-secret
+
+  #============================================================================
+  # PLATFORM BUILD AGENT
+  #============================================================================
+
+  platform-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    image: jenkins-platform-agent:3386.v353e57a_1b_ea_0-2-jdk21
+    depends_on:
+      platform-agent-bootstrap:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 2048M
+    environment:
+      JENKINS_AGENT_NAME: platform-agent
+      JENKINS_AGENT_WORKDIR: /home/jenkins/agent
+      JENKINS_URL: http://jenkins:8080
+      JENKINS_WEB_SOCKET: "true"
+    restart: unless-stopped
+    user: "0:0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - jenkins-agent-secret:/run/jenkins-agent-secret:ro
+      - jenkins-agent-workspace:/home/jenkins/agent
 
   #==============================================================================
   # CONTROLLER SECRETS
@@ -85,4 +136,6 @@ secrets:
 #==============================================================================
 
 volumes:
+  jenkins-agent-secret:
+  jenkins-agent-workspace:
   jenkins-home:

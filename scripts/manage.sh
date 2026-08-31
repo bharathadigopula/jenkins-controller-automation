@@ -50,9 +50,7 @@ require_root() {
 #==============================================================================
 
 write_environment() {
-  docker_gid=$(stat --format '%g' /var/run/docker.sock)
   cat > "$release_path/.env" <<EOF
-DOCKER_GID=$docker_gid
 GITHUB_TOKEN_FILE=./secrets/github-token
 JENKINS_ADMIN_ID=${JENKINS_ADMIN_ID:-admin}
 JENKINS_ADMIN_PASSWORD_FILE=./secrets/jenkins-admin-password
@@ -193,13 +191,15 @@ show_controller_diagnostics() {
   docker compose \
     --project-directory "$install_root/current" \
     --file "$install_root/current/compose.yaml" \
-    logs --no-color --tail 20 jenkins >&2 || true
+    logs --no-color --tail 20 jenkins platform-agent-bootstrap platform-agent >&2 || true
 }
 
 verify_controller() {
+  local agent_nodes
   local anonymous_status
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
   local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local controller_container_id
   local controller_jobs
   local expected_controller_image
   local expected_controller_version
@@ -208,8 +208,8 @@ verify_controller() {
   if [[ "$(docker compose \
     --project-directory "$install_root/current" \
     --file "$install_root/current/compose.yaml" \
-    ps --services --filter status=running | sort)" != "jenkins" ]]; then
-    printf 'Jenkins Compose service is not running.\n' >&2
+    ps --services --filter status=running | sort)" != $'jenkins\nplatform-agent' ]]; then
+    printf 'Jenkins controller and platform agent services are not running.\n' >&2
     show_controller_diagnostics
     return 1
   fi
@@ -226,6 +226,25 @@ verify_controller() {
     return 1
   fi
   wait_for_metrics "$controller_origin/prometheus/" "$admin_password_file"
+  agent_nodes=$(curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/computer/api/json?tree=computer[displayName,numExecutors,offline]")
+  if ! jq -e '
+    any(.computer[]; .displayName == "Built-In Node" and .numExecutors == 0) and
+    any(.computer[]; .displayName == "platform-agent" and .numExecutors == 1 and .offline == false)
+  ' <<< "$agent_nodes" >/dev/null; then
+    printf 'Jenkins controller isolation or platform agent readiness is invalid.\n' >&2
+    return 1
+  fi
+  controller_container_id=$(docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    ps --quiet jenkins)
+  if docker inspect --format '{{range .Mounts}}{{println .Source .Destination}}{{end}}' \
+    "$controller_container_id" | grep -Fq '/var/run/docker.sock'; then
+    printf 'Jenkins controller must not have Docker socket access.\n' >&2
+    return 1
+  fi
   anonymous_status=$(curl --silent --output /dev/null --write-out '%{http_code}' "$controller_origin/manage")
   if [[ "$anonymous_status" != "403" ]]; then
     printf 'Anonymous Jenkins management access returned HTTP %s instead of 403.\n' "$anonymous_status" >&2
