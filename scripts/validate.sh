@@ -195,13 +195,40 @@ if grep -Eq '^[[:space:]]*(crumbIssuer:|excludeClientIPFromCrumb:)' \
   exit 1
 fi
 
-if ! grep -Fq 'defaultVersion: v1.1.0' "$repository_root/jcasc/jenkins.yaml" || \
-  ! grep -Fq "pipelineJob('configure-production-jenkins')" "$repository_root/jcasc/jenkins.yaml" || \
-  ! grep -Fq "pipelineJob('configure-production-monitoring')" "$repository_root/jcasc/jenkins.yaml" || \
+if ! grep -Fq 'defaultVersion: v1.2.0' "$repository_root/jcasc/jenkins.yaml" || \
   ! grep -Fq 'credentials('"'"'github-scm'"'"')' "$repository_root/jcasc/jenkins.yaml"; then
   printf 'JCasC must provision the pinned shared library and managed production jobs.\n' >&2
   exit 1
 fi
+
+for managed_job in \
+  configure-production-jenkins \
+  configure-production-monitoring \
+  operate-production-oci-infrastructure \
+  operate-production-host-network \
+  operate-production-ingress-connector \
+  validate-github-pipeline-templates \
+  validate-jenkins-pipeline-templates \
+  validate-shared-host-automation \
+  validate-terraform-oci-modules; do
+  if ! grep -Fq "pipelineJob('$managed_job')" "$repository_root/jcasc/jenkins.yaml"; then
+    printf 'Missing repository-managed Jenkins job: %s\n' "$managed_job" >&2
+    exit 1
+  fi
+done
+
+for pipeline_path in \
+  .jenkins/pipelines/jenkins-controller.groovy \
+  .jenkins/pipelines/monitoring-stack.groovy \
+  .jenkins/pipelines/host-network.groovy \
+  .jenkins/pipelines/ingress-connector.groovy \
+  .jenkins/pipelines/production-infrastructure.groovy \
+  .jenkins/pipelines/validate.groovy; do
+  if ! grep -Fq "scriptPath('$pipeline_path')" "$repository_root/jcasc/jenkins.yaml"; then
+    printf 'Missing organized Jenkins pipeline path: %s\n' "$pipeline_path" >&2
+    exit 1
+  fi
+done
 
 for readiness_marker in \
   jenkins_service=ready \
