@@ -285,17 +285,69 @@ verify_controller() {
 #==============================================================================
 
 backup_controller() {
+  local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
+  local archive_staging_path
+  local busy_executors
+  local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local cookie_jar
+  local crumb
+  local crumb_field
+  local crumb_response
+  local attempt
+
   require_root
   install -d -m 0700 "$backup_directory"
   archive_path="$backup_directory/jenkins-home-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+  archive_staging_path="${archive_path}.partial"
   volume_path=$(docker volume inspect jenkins-controller_jenkins-home --format '{{ .Mountpoint }}')
+  wait_for_endpoint "$controller_origin/login"
+  cookie_jar=$(mktemp)
+  chmod 0600 "$cookie_jar"
+  trap 'rm -f "$cookie_jar"' EXIT
+  crumb_response=$(curl --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    --cookie "$cookie_jar" \
+    --cookie-jar "$cookie_jar" \
+    "$controller_origin/crumbIssuer/api/json")
+  crumb_field=$(jq -r '.crumbRequestField' <<< "$crumb_response")
+  crumb=$(jq -r '.crumb' <<< "$crumb_response")
+  if [[ -z "$crumb_field" || "$crumb_field" == "null" || -z "$crumb" || "$crumb" == "null" ]]; then
+    printf 'Jenkins did not return a valid CSRF crumb for backup.\n' >&2
+    return 1
+  fi
+
   touch "$maintenance_file"
-  systemctl stop jenkins-controller.service
-  trap 'systemctl start jenkins-controller.service; rm -f "$maintenance_file"' EXIT
-  tar --create --gzip --file "$archive_path" --directory "$volume_path" .
-  chmod 0600 "$archive_path"
-  systemctl start jenkins-controller.service
-  rm -f "$maintenance_file"
+  trap 'curl --silent --show-error --output /dev/null --request POST --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" --cookie "$cookie_jar" --header "$crumb_field:$crumb" "$controller_origin/cancelQuietDown" || true; rm -f "$archive_staging_path" "$cookie_jar" "$maintenance_file"' EXIT
+  curl --fail --silent --show-error --output /dev/null --request POST \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    --cookie "$cookie_jar" \
+    --header "$crumb_field:$crumb" \
+    "$controller_origin/quietDown"
+
+  for (( attempt = 1; attempt <= 120; attempt++ )); do
+    busy_executors=$(curl --fail --silent --show-error \
+      --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+      --cookie "$cookie_jar" \
+      "$controller_origin/computer/api/json?tree=busyExecutors" | jq -r '.busyExecutors')
+    if [[ "$busy_executors" == "0" ]]; then
+      break
+    fi
+    sleep 5
+  done
+  if [[ "$busy_executors" != "0" ]]; then
+    printf 'Jenkins executors did not become idle before backup.\n' >&2
+    return 1
+  fi
+
+  tar --create --gzip --file "$archive_staging_path" --directory "$volume_path" .
+  chmod 0600 "$archive_staging_path"
+  mv "$archive_staging_path" "$archive_path"
+  curl --fail --silent --show-error --output /dev/null --request POST \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    --cookie "$cookie_jar" \
+    --header "$crumb_field:$crumb" \
+    "$controller_origin/cancelQuietDown"
+  rm -f "$cookie_jar" "$maintenance_file"
   trap - EXIT
   find "$backup_directory" -maxdepth 1 -type f -name 'jenkins-home-*.tar.gz' \
     -mtime "+$backup_retention_days" -delete

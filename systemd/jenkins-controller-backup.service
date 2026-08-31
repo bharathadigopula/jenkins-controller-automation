@@ -8,7 +8,6 @@
 
 [Unit]
 Description=Back up Jenkins controller state
-Requires=jenkins-controller.service
 After=jenkins-controller.service
 
 #==============================================================================
@@ -17,4 +16,6 @@ After=jenkins-controller.service
 
 [Service]
 Type=oneshot
+EnvironmentFile=/opt/jenkins-controller/current/.env
 ExecStart=/usr/bin/bash /opt/jenkins-controller/current/scripts/manage.sh backup
+TimeoutStartSec=1800
