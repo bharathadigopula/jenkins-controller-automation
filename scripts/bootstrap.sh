@@ -74,16 +74,25 @@ tar --extract --gzip --file "$temporary_directory/automation.tar.gz" \
 #==============================================================================
 
 manage_script="$temporary_directory/source/scripts/manage.sh"
+manage_environment=(
+  env
+  "AUTOMATION_REF=$automation_ref"
+  "JENKINS_URL=$jenkins_url"
+  "JENKINS_RESOURCE_ROOT_URL=$resource_root_url"
+  "JENKINS_BIND_ADDRESS=$bind_address"
+)
 
 if [[ "$action" == "deploy" ]]; then
   sudo -n bash "$temporary_directory/source/scripts/install-docker.sh" "$action"
-  sudo -n env AUTOMATION_REF="$automation_ref" JENKINS_URL="$jenkins_url" JENKINS_RESOURCE_ROOT_URL="$resource_root_url" JENKINS_BIND_ADDRESS="$bind_address" \
-    bash "$manage_script" "$action" "$secret_bundle"
+  deploy_log="$temporary_directory/deploy.log"
+  if ! sudo -n "${manage_environment[@]}" bash "$manage_script" "$action" "$secret_bundle" 2>&1 | tee "$deploy_log" >/dev/null; then
+    tail -c 900 "$deploy_log" >&2
+    exit 1
+  fi
+  tail -c 900 "$deploy_log"
 elif [[ "$action" == "validate" || "$action" == "dry-run" ]]; then
   bash "$temporary_directory/source/scripts/install-docker.sh" "$action"
-  env AUTOMATION_REF="$automation_ref" JENKINS_URL="$jenkins_url" JENKINS_RESOURCE_ROOT_URL="$resource_root_url" JENKINS_BIND_ADDRESS="$bind_address" \
-    bash "$manage_script" "$action"
+  "${manage_environment[@]}" bash "$manage_script" "$action"
 else
-  sudo -n env AUTOMATION_REF="$automation_ref" JENKINS_URL="$jenkins_url" JENKINS_RESOURCE_ROOT_URL="$resource_root_url" JENKINS_BIND_ADDRESS="$bind_address" \
-    JENKINS_RESTORE_ARCHIVE="$restore_archive" bash "$manage_script" "$action"
+  sudo -n "${manage_environment[@]}" "JENKINS_RESTORE_ARCHIVE=$restore_archive" bash "$manage_script" "$action"
 fi
