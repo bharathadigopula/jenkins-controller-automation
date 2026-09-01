@@ -753,6 +753,12 @@ scan_repositories() {
 diagnose_validation_jobs() {
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
   local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local diagnostic_branch
+  local diagnostic_build
+  local diagnostic_console
+  local diagnostic_report
+  local diagnostic_repository
+  local diagnostic_target
   local controller_jobs
   local controller_queue
   local controller_nodes
@@ -769,32 +775,57 @@ diagnose_validation_jobs() {
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
     "$controller_origin/computer/api/json?tree=computer[displayName,offline,executors[currentExecutable[url]]]")
 
-  jq -r '
-    .computer[] |
-    select(.displayName == "platform-agent") |
-    "jenkins_platform_agent=" + (if .offline then "offline" else "online" end) +
-    " executors=" + (.executors | length | tostring) +
-    " busy=" + ([.executors[] | select(.currentExecutable != null)] | length | tostring)
-  ' <<< "$controller_nodes"
-  printf 'jenkins_queue=%s\n' "$(jq '.items | length' <<< "$controller_queue")"
-  jq -r '
-    .jobs[] |
-    .name as $repository |
-    (.jobs[]? | select(.name == "validate")) |
-    if ((.jobs // []) | length) == 0 then
-      "jenkins_validation=" + $repository + "/unindexed"
-    else
+  diagnostic_target=$(jq -r '
+    [
       .jobs[] |
-      "jenkins_validation=" + $repository + "/" + .name + "#" +
-      ((.lastBuild.number // 0) | tostring) + ":" +
-      (if (.lastBuild.building // false) then "running" else (.lastBuild.result // "never" | ascii_downcase) end)
-    end
-  ' <<< "$controller_jobs"
-  printf 'jenkins_console=github-pipeline-templates/validate/main/lastBuild\n'
-  curl --globoff --fail --silent --show-error \
+      .name as $repository |
+      (.jobs[]? | select(.name == "validate")) |
+      .jobs[] |
+      select(.name == "main" and (.lastBuild.number // 0) > 0) |
+      {
+        repository: $repository,
+        branch: .name,
+        build: .lastBuild.number,
+        priority: (if .lastBuild.result == "FAILURE" then 0 elif .lastBuild.building then 1 else 2 end)
+      }
+    ] |
+    sort_by(.priority, .repository) |
+    (.[0] // {repository: "github-pipeline-templates", branch: "main", build: "lastBuild"}) |
+    [.repository, .branch, (.build | tostring)] |
+    @tsv
+  ' <<< "$controller_jobs")
+  IFS=$'\t' read -r diagnostic_repository diagnostic_branch diagnostic_build <<< "$diagnostic_target"
+  diagnostic_console=$(curl --globoff --fail --silent --show-error \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
-    "$controller_origin/job/github-pipeline-templates/job/validate/job/main/lastBuild/consoleText" |
-    tail -n 35
+    "$controller_origin/job/$diagnostic_repository/job/validate/job/$diagnostic_branch/$diagnostic_build/consoleText")
+  diagnostic_report=$(
+    jq -r '
+      .computer[] |
+      select(.displayName == "platform-agent") |
+      "jenkins_platform_agent=" + (if .offline then "offline" else "online" end) +
+      " executors=" + (.executors | length | tostring) +
+      " busy=" + ([.executors[] | select(.currentExecutable != null)] | length | tostring)
+    ' <<< "$controller_nodes"
+    printf 'jenkins_queue=%s\n' "$(jq '.items | length' <<< "$controller_queue")"
+    jq -r '
+      .jobs[] |
+      .name as $repository |
+      (.jobs[]? | select(.name == "validate")) |
+      if ((.jobs // []) | length) == 0 then
+        "jenkins_validation=" + $repository + "/unindexed"
+      else
+        .jobs[] |
+        "jenkins_validation=" + $repository + "/" + .name + "#" +
+        ((.lastBuild.number // 0) | tostring) + ":" +
+        (if (.lastBuild.building // false) then "running" else (.lastBuild.result // "never" | ascii_downcase) end)
+      end
+    ' <<< "$controller_jobs"
+    printf 'jenkins_console=%s/validate/%s#%s\n' "$diagnostic_repository" "$diagnostic_branch" "$diagnostic_build"
+    grep -Ei 'not found|error|exception|exit code|failed|failure' <<< "$diagnostic_console" |
+      tail -n 2 |
+      cut -c 1-140 || true
+  )
+  printf '%.900s\n' "$diagnostic_report"
   printf 'jenkins_diagnose=ready\n'
 }
 
