@@ -28,7 +28,7 @@ resource_root_authority=${resource_root_url#*://}
 resource_root_host=${resource_root_authority%%:*}
 
 case "$action" in
-  validate|dry-run|deploy|verify|status|backup|restore|rollback|test-restore) ;;
+  validate|dry-run|deploy|verify|status|scan|backup|restore|rollback|test-restore) ;;
   *) printf 'Unsupported Jenkins lifecycle action.\n' >&2; exit 2 ;;
 esac
 

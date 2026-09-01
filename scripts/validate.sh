@@ -372,6 +372,16 @@ if ! grep -Fq 'managed_jobs_ready()' "$repository_root/scripts/manage.sh" || \
   exit 1
 fi
 
+if ! grep -Fq 'scan_repositories()' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_repository_scans=scheduled' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_main_builds=scheduled' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_scan=ready' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'job/validate/build?delay=0sec' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'job/validate/job/main/build?delay=0sec' "$repository_root/scripts/manage.sh"; then
+  printf 'Repository scan lifecycle validation failed.\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'jenkins_metrics_http_code=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_metrics_content_type=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_metrics_size=' "$repository_root/scripts/manage.sh" || \
