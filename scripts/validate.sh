@@ -382,6 +382,15 @@ if ! grep -Fq 'scan_repositories()' "$repository_root/scripts/manage.sh" || \
   exit 1
 fi
 
+if ! grep -Fq 'diagnose_validation_jobs()' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_platform_agent=' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_queue=' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_validation=' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_diagnose=ready' "$repository_root/scripts/manage.sh"; then
+  printf 'Repository validation diagnostic checks failed.\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'jenkins_metrics_http_code=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_metrics_content_type=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_metrics_size=' "$repository_root/scripts/manage.sh" || \

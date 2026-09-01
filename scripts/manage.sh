@@ -747,6 +747,53 @@ scan_repositories() {
 }
 
 #==============================================================================
+# REPOSITORY VALIDATION DIAGNOSTICS
+#==============================================================================
+
+diagnose_validation_jobs() {
+  local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
+  local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local controller_jobs
+  local controller_queue
+  local controller_nodes
+
+  require_root
+  wait_for_endpoint "$controller_origin/api/json" "$admin_password_file"
+  controller_jobs=$(curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/api/json?tree=jobs[name,jobs[name,jobs[name,lastBuild[number,result,building]]]]")
+  controller_queue=$(curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/queue/api/json?tree=items[id]")
+  controller_nodes=$(curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/computer/api/json?tree=computer[displayName,offline,executors[currentExecutable[url]]]")
+
+  jq -r '
+    .computer[] |
+    select(.displayName == "platform-agent") |
+    "jenkins_platform_agent=" + (if .offline then "offline" else "online" end) +
+    " executors=" + (.executors | length | tostring) +
+    " busy=" + ([.executors[] | select(.currentExecutable != null)] | length | tostring)
+  ' <<< "$controller_nodes"
+  printf 'jenkins_queue=%s\n' "$(jq '.items | length' <<< "$controller_queue")"
+  jq -r '
+    .jobs[] |
+    .name as $repository |
+    (.jobs[]? | select(.name == "validate")) |
+    if ((.jobs // []) | length) == 0 then
+      "jenkins_validation=" + $repository + "/unindexed"
+    else
+      .jobs[] |
+      "jenkins_validation=" + $repository + "/" + .name + "#" +
+      ((.lastBuild.number // 0) | tostring) + ":" +
+      (if (.lastBuild.building // false) then "running" else (.lastBuild.result // "never" | ascii_downcase) end)
+    end
+  ' <<< "$controller_jobs"
+  printf 'jenkins_diagnose=ready\n'
+}
+
+#==============================================================================
 # CONTROLLER ROLLBACK
 #==============================================================================
 
@@ -802,6 +849,9 @@ case "$action" in
     ;;
   scan)
     scan_repositories
+    ;;
+  diagnose)
+    diagnose_validation_jobs
     ;;
   recover)
     recover_controller
