@@ -48,7 +48,7 @@ SECURITY MODEL
 - The administrator password and GitHub token are stored under a root-only host directory and mounted as Docker secrets readable only by the non-root Jenkins container user.
 - A one-shot bootstrap container exchanges the administrator credential for the `platform-agent` remoting secret. The long-running agent receives only that remoting secret and runs as UID/GID 1000 with the Docker socket's supplemental group.
 - JCasC installs a `github-token` secret-text credential for API operations and a `github-scm` username/token credential for private repository checkout.
-- JCasC pins `jenkins-pipeline-templates v1.3.0`, installs the pinned AnsiColor plugin, and creates all production and validation jobs from repository pipeline definitions.
+- JCasC pins `jenkins-pipeline-templates v1.4.0`, installs the pinned AnsiColor plugin, and creates all production and validation jobs from repository pipeline definitions.
 - Jenkins UI Content Security Policy enforcement is enabled through JCasC.
 - Workspace and artifact content is isolated on `JENKINS_RESOURCE_ROOT_URL`; production must use a different protected hostname that routes to the same private controller service.
 - The legacy `hudson.model.DirectoryBrowserSupport.CSP` override is forbidden so Jenkins retains its default user-content policy and does not raise the resource-root recommendation.
@@ -79,7 +79,7 @@ bash scripts/manage.sh dry-run
 bash scripts/install-docker.sh dry-run
 ```
 
-CI also builds the complete controller image, resolving every pinned plugin against the pinned Jenkins core.
+Jenkins publishes the required `continuous-integration/jenkins` check. The retained GitHub Actions validation workflow runs on pull requests, `main`, its daily schedule, or manual dispatch. Both validators build the complete controller image, resolving every pinned plugin against the pinned Jenkins core.
 It checks Jenkins LTS, every explicit plugin, and the complete Docker package set against official upstream metadata. A daily scheduled run reports version drift while production continues to use immutable tags.
 
 <!--
