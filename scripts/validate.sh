@@ -395,6 +395,7 @@ if ! grep -Fq 'diagnose_validation_jobs()' "$repository_root/scripts/manage.sh" 
   ! grep -Fq 'jenkins_queue=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_validation=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'priority: (if .lastBuild.result == "FAILURE" then 0' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "'curl:|docker:|error response|permission denied|not found|no such file|unable to|failed to|is not latest|must support'" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq "printf '%.900s\\n' \"\$diagnostic_report\"" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_diagnose=ready' "$repository_root/scripts/manage.sh"; then
   printf 'Repository validation diagnostic checks failed.\n' >&2
