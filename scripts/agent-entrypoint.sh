@@ -97,6 +97,7 @@ run_agent() {
   export JENKINS_SECRET
   JENKINS_SECRET=$(< "$secret_file")
   docker_socket_gid=$(stat --format '%g' /var/run/docker.sock)
+  export HOME=/home/jenkins
   exec setpriv \
     --reuid 1000 \
     --regid 1000 \

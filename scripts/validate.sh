@@ -65,6 +65,11 @@ if ! grep -Fq 'COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/dock
   exit 1
 fi
 
+if ! grep -Fq 'export HOME=/home/jenkins' "$repository_root/scripts/agent-entrypoint.sh"; then
+  printf 'The platform agent must use the Jenkins home after dropping root privileges.\n' >&2
+  exit 1
+fi
+
 #==============================================================================
 # PLUGIN CATALOGUE VALIDATION
 #==============================================================================
