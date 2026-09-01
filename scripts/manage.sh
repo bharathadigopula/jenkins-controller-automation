@@ -790,6 +790,11 @@ diagnose_validation_jobs() {
       (if (.lastBuild.building // false) then "running" else (.lastBuild.result // "never" | ascii_downcase) end)
     end
   ' <<< "$controller_jobs"
+  printf 'jenkins_console=github-pipeline-templates/validate/main/lastBuild\n'
+  curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/job/github-pipeline-templates/job/validate/job/main/lastBuild/consoleText" |
+    tail -n 35
   printf 'jenkins_diagnose=ready\n'
 }
 
