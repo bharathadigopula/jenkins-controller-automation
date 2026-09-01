@@ -96,7 +96,7 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.27 \
+  v1.0.29 \
   https://jenkins.example.com \
   https://jenkins-resources.example.com \
   10.0.0.20 \
