@@ -25,9 +25,12 @@ secret_file=$secret_directory/secret
 
 bootstrap_agent() {
   local admin_password
-  local agent_jnlp
   local agent_secret
   local attempt
+  local cookie_jar
+  local crumb
+  local crumb_field
+  local crumb_response
 
   admin_password=$(< /run/secrets/jenkins_admin_password)
   if [[ -z "$admin_password" ]]; then
@@ -37,17 +40,33 @@ bootstrap_agent() {
 
   umask 077
   install -d -m 0700 "$secret_directory"
+  if [[ ! "$agent_name" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+    printf 'Jenkins agent name is invalid.\n' >&2
+    exit 1
+  fi
+  cookie_jar=$(mktemp)
+  trap 'rm -f "$cookie_jar"' EXIT
   for (( attempt = 1; attempt <= 60; attempt++ )); do
-    if agent_jnlp=$(curl --fail --silent --show-error \
+    if crumb_response=$(curl --fail --silent --show-error \
       --user "${JENKINS_ADMIN_ID:-admin}:$admin_password" \
-      "${controller_url%/}/computer/${agent_name}/jenkins-agent.jnlp" 2>/dev/null); then
-      agent_secret=$(grep -o '<argument>[^<]*</argument>' <<< "$agent_jnlp" | \
-        sed -n '1{s#<argument>##;s#</argument>##;p;}')
+      --cookie "$cookie_jar" \
+      --cookie-jar "$cookie_jar" \
+      "${controller_url%/}/crumbIssuer/api/json" 2>/dev/null); then
+      crumb_field=$(sed -n 's/.*"crumbRequestField":"\([^"]*\)".*/\1/p' <<< "$crumb_response")
+      crumb=$(sed -n 's/.*"crumb":"\([^"]*\)".*/\1/p' <<< "$crumb_response")
+      agent_secret=$(curl --fail --silent --show-error \
+        --user "${JENKINS_ADMIN_ID:-admin}:$admin_password" \
+        --cookie "$cookie_jar" \
+        --header "$crumb_field:$crumb" \
+        --data-urlencode "script=print(jenkins.model.Jenkins.get().getComputer('${agent_name}').getJnlpMac())" \
+        "${controller_url%/}/scriptText" 2>/dev/null || true)
       if [[ "$agent_secret" =~ ^[[:xdigit:]]{64}$ ]]; then
         printf '%s' "$agent_secret" > "$secret_file.tmp"
         mv "$secret_file.tmp" "$secret_file"
         chown -R 1000:1000 "$secret_directory"
-        unset admin_password agent_jnlp agent_secret
+        rm -f "$cookie_jar"
+        trap - EXIT
+        unset admin_password agent_secret crumb crumb_field crumb_response
         printf 'jenkins_agent_bootstrap=ready\n'
         return 0
       fi

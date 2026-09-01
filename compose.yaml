@@ -43,9 +43,11 @@ services:
 
     environment:
       CASC_JENKINS_CONFIG: /var/jenkins_config/jenkins.yaml
-      JAVA_OPTS: -Xms512m -Xmx1024m -XX:+UseG1GC -Djenkins.install.runSetupWizard=false -Dhudson.model.DirectoryBrowserSupport.CSP=sandbox\ allow-same-origin\;\ default-src\ \'none\'\;\ img-src\ \'self\'\;\ style-src\ \'self\'\;
+      COLLECTING_METRICS_PERIOD_IN_SECONDS: "120"
+      JAVA_OPTS: -Xms512m -Xmx1024m -XX:+UseG1GC -Djenkins.install.runSetupWizard=false
       JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
       JENKINS_OPTS: --httpPort=8080
+      JENKINS_RESOURCE_ROOT_URL: ${JENKINS_RESOURCE_ROOT_URL:-http://jenkins-resources.localhost:8080}
       JENKINS_URL: ${JENKINS_URL:-http://localhost:8080}
 
     #==========================================================================
