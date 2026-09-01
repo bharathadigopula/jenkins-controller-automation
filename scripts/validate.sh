@@ -16,6 +16,7 @@ set -euo pipefail
 
 repository_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 required_files=(
+  .jenkins/pipelines/validate.groovy
   Dockerfile
   Dockerfile.agent
   compose.yaml
@@ -107,7 +108,8 @@ if grep -Fq 'hudson.model.DirectoryBrowserSupport.CSP=' "$repository_root/compos
   ! grep -Fq "url: \${JENKINS_RESOURCE_ROOT_URL}" "$repository_root/jcasc/jenkins.yaml" || \
   ! grep -Fq 'COLLECTING_METRICS_PERIOD_IN_SECONDS: "120"' "$repository_root/compose.yaml" || \
   ! grep -Eq '^ansicolor:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt" || \
-  ! grep -Eq '^cloudbees-disk-usage-simple:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt"; then
+  ! grep -Eq '^cloudbees-disk-usage-simple:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt" || \
+  ! grep -Eq '^github-branch-source:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt"; then
   printf 'Jenkins UI CSP, resource isolation, disk metrics, and ANSI rendering must be explicitly configured.\n' >&2
   exit 1
 fi
@@ -237,27 +239,61 @@ if grep -Eq '^[[:space:]]*(crumbIssuer:|excludeClientIPFromCrumb:)' \
   exit 1
 fi
 
-if ! grep -Fq 'defaultVersion: v1.3.0' "$repository_root/jcasc/jenkins.yaml" || \
+if ! grep -Fq 'defaultVersion: v1.4.0' "$repository_root/jcasc/jenkins.yaml" || \
   ! grep -Fq 'credentials('"'"'github-scm'"'"')' "$repository_root/jcasc/jenkins.yaml"; then
   printf 'JCasC must provision the pinned shared library and managed production jobs.\n' >&2
   exit 1
 fi
 
+for managed_repository in \
+  bharath-oci-host-config \
+  github-pipeline-templates \
+  jenkins-controller-automation \
+  jenkins-pipeline-templates \
+  monitoring-stack-automation \
+  shared-host-automation \
+  terraform-oci-modules \
+  tf-bharath-oci-infra; do
+  if ! grep -Fq "[name: '$managed_repository'" "$repository_root/jcasc/jenkins.yaml"; then
+    printf 'Missing repository-managed Jenkins folder: %s\n' "$managed_repository" >&2
+    exit 1
+  fi
+done
+
 for managed_job in \
-  configure-production-jenkins \
-  configure-production-monitoring \
-  operate-production-oci-infrastructure \
-  operate-production-host-network \
-  operate-production-ingress-connector \
-  validate-github-pipeline-templates \
-  validate-jenkins-pipeline-templates \
-  validate-shared-host-automation \
-  validate-terraform-oci-modules; do
+  bharath-oci-host-config/configure-jenkins \
+  bharath-oci-host-config/configure-monitoring \
+  bharath-oci-host-config/operate-host-network \
+  bharath-oci-host-config/operate-ingress-connector \
+  tf-bharath-oci-infra/operate-infrastructure \
+  jenkins-controller-automation/scheduled-validation \
+  monitoring-stack-automation/scheduled-validation; do
   if ! grep -Fq "pipelineJob('$managed_job')" "$repository_root/jcasc/jenkins.yaml"; then
     printf 'Missing repository-managed Jenkins job: %s\n' "$managed_job" >&2
     exit 1
   fi
 done
+
+if ! grep -Fq "multibranchPipelineJob(repositoryConfig.name + '/validate')" "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq "includes('main')" "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'buildOriginBranchWithPR(false)' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'buildOriginPRHead(true)' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'buildOriginPRMerge(false)' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'buildForkPRHead(false)' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'buildForkPRMerge(false)' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq "interval('5m')" "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'numToKeep(20)' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq "spec('17 3 * * *')" "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq "spec('29 3 * * *')" "$repository_root/jcasc/jenkins.yaml"; then
+  printf 'Multibranch validation must use controlled origin PR discovery and scheduled polling.\n' >&2
+  exit 1
+fi
+
+if grep -Eq "pipelineJob\\('(configure-production|operate-production|validate-(github|jenkins|shared|terraform))" \
+  "$repository_root/jcasc/jenkins.yaml"; then
+  printf 'Legacy flat Jenkins jobs must not remain in managed configuration.\n' >&2
+  exit 1
+fi
 
 for pipeline_path in \
   .jenkins/pipelines/jenkins-controller.groovy \
@@ -281,6 +317,8 @@ for readiness_marker in \
   jenkins_known_warnings=clear \
   jenkins_configuration=ready \
   jenkins_jobs=ready \
+  jenkins_job_activation=ready \
+  jenkins_legacy_jobs=clear \
   jenkins_backup_timer=ready \
   jenkins_health_timer=ready; do
   if ! grep -Fq "$readiness_marker" "$repository_root/scripts/manage.sh"; then
@@ -320,6 +358,17 @@ if ! sed -n '/deploy_controller()/,/^}/p' "$repository_root/scripts/manage.sh" |
   ! sed -n '/deploy_controller()/,/^}/p' "$repository_root/scripts/manage.sh" | \
     grep -Fq "trap 'rm -f \"\$maintenance_file\"' EXIT"; then
   printf 'Deployment must suppress watchdog recovery until verification completes.\n' >&2
+  exit 1
+fi
+
+if ! grep -Fq 'managed_jobs_ready()' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'activate_managed_jobs' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_job_activation=restart_required' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'New Jenkins job topology did not activate after the bounded restart.' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'reconcile_legacy_jobs' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'New Jenkins job topology is incomplete; legacy jobs will not be removed.' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'jenkins_legacy_jobs=clear' "$repository_root/scripts/manage.sh"; then
+  printf 'Folder migration must activate and validate the new topology before removing legacy jobs.\n' >&2
   exit 1
 fi
 
