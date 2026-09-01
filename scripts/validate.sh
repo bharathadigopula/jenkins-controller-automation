@@ -57,6 +57,12 @@ if ! grep -Fq 'USER jenkins' "$repository_root/Dockerfile" || \
   exit 1
 fi
 
+if ! grep -Fq 'jq=1.7.1-6+deb13u3' "$repository_root/Dockerfile.agent" || \
+  ! grep -Fq 'rm -rf /var/lib/apt/lists/*' "$repository_root/Dockerfile.agent"; then
+  printf 'The platform agent must include pinned jq with package metadata cleanup.\n' >&2
+  exit 1
+fi
+
 #==============================================================================
 # PLUGIN CATALOGUE VALIDATION
 #==============================================================================
