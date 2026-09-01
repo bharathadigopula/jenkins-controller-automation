@@ -57,9 +57,11 @@ if ! grep -Fq 'USER jenkins' "$repository_root/Dockerfile" || \
   exit 1
 fi
 
-if ! grep -Fq 'jq=1.7.1-6+deb13u3' "$repository_root/Dockerfile.agent" || \
+if ! grep -Fq 'COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/docker-buildx' \
+  "$repository_root/Dockerfile.agent" || \
+  ! grep -Fq 'jq=1.7.1-6+deb13u3' "$repository_root/Dockerfile.agent" || \
   ! grep -Fq 'rm -rf /var/lib/apt/lists/*' "$repository_root/Dockerfile.agent"; then
-  printf 'The platform agent must include pinned jq with package metadata cleanup.\n' >&2
+  printf 'The platform agent must include Buildx and pinned jq with package metadata cleanup.\n' >&2
   exit 1
 fi
 
@@ -281,7 +283,7 @@ for managed_job in \
 done
 
 if ! grep -Fq "multibranchPipelineJob(repositoryConfig.name + '/validate')" "$repository_root/jcasc/jenkins.yaml" || \
-  ! grep -Fq "includes('main')" "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq "includes('main PR-*')" "$repository_root/jcasc/jenkins.yaml" || \
   ! grep -Fq 'buildOriginBranchWithPR(false)' "$repository_root/jcasc/jenkins.yaml" || \
   ! grep -Fq 'buildOriginPRHead(true)' "$repository_root/jcasc/jenkins.yaml" || \
   ! grep -Fq 'buildOriginPRMerge(false)' "$repository_root/jcasc/jenkins.yaml" || \
@@ -392,7 +394,8 @@ if ! grep -Fq 'diagnose_validation_jobs()' "$repository_root/scripts/manage.sh" 
   ! grep -Fq 'jenkins_platform_agent=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_queue=' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_validation=' "$repository_root/scripts/manage.sh" || \
-  ! grep -Fq 'lastBuild/consoleText' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq 'priority: (if .lastBuild.result == "FAILURE" then 0' "$repository_root/scripts/manage.sh" || \
+  ! grep -Fq "printf '%.900s\\n' \"\$diagnostic_report\"" "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'jenkins_diagnose=ready' "$repository_root/scripts/manage.sh"; then
   printf 'Repository validation diagnostic checks failed.\n' >&2
   exit 1

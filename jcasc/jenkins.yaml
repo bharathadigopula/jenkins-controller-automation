@@ -143,7 +143,7 @@ jobs:
               checkoutCredentialsId('github-scm')
               repoOwner('bharathadigopula')
               repository(repositoryConfig.name)
-              includes('main')
+              includes('main PR-*')
               excludes('')
               buildOriginBranch(true)
               buildOriginBranchWithPR(false)
