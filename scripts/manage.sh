@@ -756,6 +756,7 @@ diagnose_validation_jobs() {
   local diagnostic_branch
   local diagnostic_build
   local diagnostic_console
+  local diagnostic_error
   local diagnostic_report
   local diagnostic_repository
   local diagnostic_target
@@ -798,6 +799,13 @@ diagnose_validation_jobs() {
   diagnostic_console=$(curl --globoff --fail --silent --show-error \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
     "$controller_origin/job/$diagnostic_repository/job/validate/job/$diagnostic_branch/$diagnostic_build/consoleText")
+  diagnostic_error=$(grep -Ei \
+    'curl:|docker:|error response|permission denied|not found|no such file|unable to|failed to|is not latest|must support' \
+    <<< "$diagnostic_console" | head -n 2 | cut -c 1-140 || true)
+  if [[ -z "$diagnostic_error" ]]; then
+    diagnostic_error=$(grep -Ei 'error|exception|exit code|failed|failure' \
+      <<< "$diagnostic_console" | head -n 1 | cut -c 1-140 || true)
+  fi
   diagnostic_report=$(
     jq -r '
       .computer[] |
@@ -821,9 +829,7 @@ diagnose_validation_jobs() {
       end
     ' <<< "$controller_jobs"
     printf 'jenkins_console=%s/validate/%s#%s\n' "$diagnostic_repository" "$diagnostic_branch" "$diagnostic_build"
-    grep -Ei 'not found|error|exception|exit code|failed|failure' <<< "$diagnostic_console" |
-      tail -n 2 |
-      cut -c 1-140 || true
+    printf '%s\n' "$diagnostic_error"
   )
   printf '%.900s\n' "$diagnostic_report"
   printf 'jenkins_diagnose=ready\n'
