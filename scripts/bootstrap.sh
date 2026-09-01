@@ -84,12 +84,8 @@ manage_environment=(
 
 if [[ "$action" == "deploy" ]]; then
   sudo -n bash "$temporary_directory/source/scripts/install-docker.sh" "$action"
-  deploy_log="$temporary_directory/deploy.log"
-  if ! sudo -n "${manage_environment[@]}" bash "$manage_script" "$action" "$secret_bundle" 2>&1 | tee "$deploy_log" >/dev/null; then
-    tail -c 900 "$deploy_log" >&2
-    exit 1
-  fi
-  tail -c 900 "$deploy_log"
+  printf 'jenkins_deploy=ready\n'
+  sudo -n "${manage_environment[@]}" bash "$manage_script" "$action" "$secret_bundle"
 elif [[ "$action" == "validate" || "$action" == "dry-run" ]]; then
   bash "$temporary_directory/source/scripts/install-docker.sh" "$action"
   "${manage_environment[@]}" bash "$manage_script" "$action"
