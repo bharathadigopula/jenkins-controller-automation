@@ -56,6 +56,7 @@ JENKINS_ADMIN_ID=${JENKINS_ADMIN_ID:-admin}
 JENKINS_ADMIN_PASSWORD_FILE=./secrets/jenkins-admin-password
 JENKINS_BIND_ADDRESS=${JENKINS_BIND_ADDRESS:-127.0.0.1}
 JENKINS_CONTROLLER_VERSION=2.568.2-lts-jdk21
+JENKINS_RESOURCE_ROOT_URL=${JENKINS_RESOURCE_ROOT_URL:-http://jenkins-resources.localhost:8080}
 JENKINS_URL=${JENKINS_URL:-http://localhost:8080}
 EOF
   chmod 0600 "$release_path/.env"
@@ -203,6 +204,12 @@ verify_controller() {
   local controller_jobs
   local expected_controller_image
   local expected_controller_version
+  local jenkins_headers
+  local persisted_admin_accounts
+  local resource_root_authority
+  local resource_root_port
+  local resource_root_scheme
+  local resource_root_status
   local running_controller_version
 
   if [[ "$(docker compose \
@@ -223,6 +230,31 @@ verify_controller() {
   if [[ "$running_controller_version" != "$expected_controller_version" ]]; then
     printf 'Running Jenkins version %s does not match active release %s.\n' \
       "${running_controller_version:-unknown}" "$expected_controller_version" >&2
+    return 1
+  fi
+  jenkins_headers=$(curl --fail --silent --show-error --dump-header - --output /dev/null "$controller_origin/login" | tr -d '\r')
+  if ! grep -Eqi '^Content-Security-Policy:' <<< "$jenkins_headers"; then
+    printf 'Jenkins UI Content Security Policy is not enforced.\n' >&2
+    return 1
+  fi
+  resource_root_authority=${JENKINS_RESOURCE_ROOT_URL#*://}
+  resource_root_authority=${resource_root_authority%/}
+  resource_root_scheme=${JENKINS_RESOURCE_ROOT_URL%%://*}
+  if [[ "$resource_root_authority" == *:* ]]; then
+    resource_root_port=${resource_root_authority##*:}
+  elif [[ "$resource_root_scheme" == "https" ]]; then
+    resource_root_port=443
+  else
+    resource_root_port=80
+  fi
+  resource_root_status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --header "Host: $resource_root_authority" \
+    --header "X-Forwarded-Host: $resource_root_authority" \
+    --header "X-Forwarded-Port: $resource_root_port" \
+    --header "X-Forwarded-Proto: $resource_root_scheme" \
+    "$controller_origin/instance-identity/")
+  if [[ "$resource_root_status" != "404" ]]; then
+    printf 'Jenkins resource root returned HTTP %s instead of 404 for a non-resource request.\n' "$resource_root_status" >&2
     return 1
   fi
   wait_for_metrics "$controller_origin/prometheus/" "$admin_password_file"
@@ -255,6 +287,24 @@ verify_controller() {
     --file "$install_root/current/compose.yaml" \
     exec --no-TTY jenkins test -f /var/jenkins_home/jenkins.install.InstallUtil.lastExecVersion; then
     printf 'Jenkins initialization state is unavailable.\n' >&2
+    return 1
+  fi
+  persisted_admin_accounts=$(docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    exec --no-TTY jenkins sh -c \
+      'find /var/jenkins_home/users -mindepth 2 -maxdepth 2 -name config.xml -exec grep -lF "<id>$1</id>" {} + | wc -l' \
+      sh "${JENKINS_ADMIN_ID:-admin}")
+  if [[ "$persisted_admin_accounts" != "1" ]]; then
+    printf 'Expected one persisted Jenkins administrator account, found %s.\n' "$persisted_admin_accounts" >&2
+    return 1
+  fi
+  if docker compose \
+    --project-directory "$install_root/current" \
+    --file "$install_root/current/compose.yaml" \
+    logs --no-color jenkins | grep -Fq \
+      'Cannot collect disk usage data because plugin CloudBees Disk Usage Simple is not installed'; then
+    printf 'Jenkins emitted a known recurring configuration warning.\n' >&2
     return 1
   fi
   if ! docker compose \
@@ -293,6 +343,9 @@ verify_controller() {
   printf 'jenkins_version=%s\n' "$running_controller_version"
   printf 'jenkins_authentication=ready\n'
   printf 'jenkins_metrics=ready\n'
+  printf 'jenkins_security_headers=ready\n'
+  printf 'jenkins_resource_root=ready\n'
+  printf 'jenkins_known_warnings=clear\n'
   printf 'jenkins_configuration=ready\n'
   printf 'jenkins_jobs=ready\n'
   printf 'jenkins_backup_timer=ready\n'

@@ -25,5 +25,6 @@ ssh-agent:430.v8c9869373423
 #==============================================================================
 
 ansicolor:542.v03d235fee02d
+cloudbees-disk-usage-simple:275.v56e74c9dd0d3
 prometheus:860.v532442b_44e9a_
 workflow-aggregator:608.v67378e9d3db_1

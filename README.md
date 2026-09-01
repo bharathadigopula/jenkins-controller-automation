@@ -29,6 +29,8 @@ CONTROLLER PROFILE
 | Controller executors | 0 |
 | Platform agent executors | 1 |
 | HTTP port | 8080 |
+| Resource root URL | `http://jenkins-resources.localhost:8080` |
+| Prometheus collection period | 120 seconds |
 
 The controller is designed for the one-OCPU, 6 GB `platform` host. A separate inbound agent container on that host provides one sequential executor. Toolchains run in short-lived Docker containers through the socket mounted only into the agent; the controller has no Docker socket and cannot execute builds.
 
@@ -47,7 +49,9 @@ SECURITY MODEL
 - A one-shot bootstrap container exchanges the administrator credential for the `platform-agent` remoting secret. The long-running agent receives only that remoting secret and runs as UID/GID 1000 with the Docker socket's supplemental group.
 - JCasC installs a `github-token` secret-text credential for API operations and a `github-scm` username/token credential for private repository checkout.
 - JCasC pins `jenkins-pipeline-templates v1.3.0`, installs the pinned AnsiColor plugin, and creates all production and validation jobs from repository pipeline definitions.
-- Build artifacts use an explicit restrictive Content Security Policy: `sandbox allow-same-origin; default-src 'none'; img-src 'self'; style-src 'self';`.
+- Jenkins UI Content Security Policy enforcement is enabled through JCasC.
+- Workspace and artifact content is isolated on `JENKINS_RESOURCE_ROOT_URL`; production must use a different protected hostname that routes to the same private controller service.
+- The legacy `hudson.model.DirectoryBrowserSupport.CSP` override is forbidden so Jenkins retains its default user-content policy and does not raise the resource-root recommendation.
 - The HTTP listener should bind to a private address and be published only through authenticated outbound ingress.
 
 The deployment secret is a single-line JSON object supplied by a secret manager:
@@ -92,8 +96,9 @@ VERSIONED DEPLOYMENT
 bash scripts/bootstrap.sh \
   dry-run \
   owner/jenkins-controller-automation \
-  v1.0.26 \
+  v1.0.27 \
   https://jenkins.example.com \
+  https://jenkins-resources.example.com \
   10.0.0.20 \
   ""
 ```
@@ -114,7 +119,7 @@ LIFECYCLE OPERATIONS
 | `dry-run` | No | Validates and reports the release path |
 | `deploy` | Yes | Builds and starts the controller through systemd |
 | `upgrade` | Yes | Deploys a new release and retains the prior release |
-| `verify` | No | Checks the running core version, zero controller executors, online platform agent, Docker socket isolation, authentication, metrics, managed jobs, backup timer, and health watchdog |
+| `verify` | No | Checks the running core version, zero controller executors, online platform agent, Docker socket isolation, authentication, metrics, UI CSP, resource-domain isolation, persisted administrator uniqueness, known recurring warnings, managed jobs, backup timer, and health watchdog |
 | `status` | No | Reports controller version, bounded metrics response metadata, backup timer, health watchdog, and Compose state; exits nonzero for an inactive component |
 | `backup` | Yes | Stops Jenkins and archives `JENKINS_HOME` |
 | `restore` | Yes | Restores `JENKINS_RESTORE_ARCHIVE` |
@@ -133,7 +138,7 @@ CONFIGURATION AS CODE
 
 ## Configuration As Code
 
-`jcasc/jenkins.yaml` sets the controller to zero executors and creates one permanent inbound node named `platform-agent` with labels `platform docker`. It also controls local authentication, authorization, environment defaults, GitHub credentials, the pinned shared library, managed production jobs, and controller URL. Jenkins core provides its default CSRF crumb issuer; the deprecated JCasC `crumbIssuer` section is forbidden because Jenkins 2.555.1 and newer cancel startup when it is present. Change controller configuration in source and redeploy an immutable release; do not edit production settings in the Jenkins UI.
+`jcasc/jenkins.yaml` sets the controller to zero executors and creates one permanent inbound node named `platform-agent` with labels `platform docker`. It also controls local authentication, authorization, UI CSP enforcement, the resource root URL, environment defaults, GitHub credentials, the pinned shared library, managed production jobs, and controller URL. Jenkins core provides its default CSRF crumb issuer; the deprecated JCasC `crumbIssuer` section is forbidden because Jenkins 2.555.1 and newer cancel startup when it is present. Change controller configuration in source and redeploy an immutable release; do not edit production settings in the Jenkins UI.
 
 The managed jobs read organised definitions under `.jenkins/pipelines/` in their source repositories. They use the controller's OCI instance principal, resolve immutable automation tags from production JSON, execute remote validation before mutations, and require Jenkins approval for mutating actions. Jenkins controller mutations run in a detached sibling tool container so they survive the controller restart; run the non-mutating `verify` action after Jenkins returns. Monitoring deployment verifies its protected public route in the same pipeline.
 

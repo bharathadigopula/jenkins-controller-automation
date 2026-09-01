@@ -99,9 +99,16 @@ if grep -Fq '/var/run/docker.sock' <<< "$controller_compose" || \
   exit 1
 fi
 
-if ! grep -Fq 'hudson.model.DirectoryBrowserSupport.CSP=' "$repository_root/compose.yaml" || \
-  ! grep -Eq '^ansicolor:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt"; then
-  printf 'Jenkins CSP and pinned ANSI console rendering must be enabled.\n' >&2
+if grep -Fq 'hudson.model.DirectoryBrowserSupport.CSP=' "$repository_root/compose.yaml" || \
+  ! grep -Fq 'JENKINS_RESOURCE_ROOT_URL:' "$repository_root/compose.yaml" || \
+  ! grep -Fq 'contentSecurityPolicy:' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'enforce: true' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'resourceRoot:' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq "url: \${JENKINS_RESOURCE_ROOT_URL}" "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'COLLECTING_METRICS_PERIOD_IN_SECONDS: "120"' "$repository_root/compose.yaml" || \
+  ! grep -Eq '^ansicolor:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt" || \
+  ! grep -Eq '^cloudbees-disk-usage-simple:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt"; then
+  printf 'Jenkins UI CSP, resource isolation, disk metrics, and ANSI rendering must be explicitly configured.\n' >&2
   exit 1
 fi
 
@@ -207,6 +214,7 @@ sample_arguments=$(jq -cn '[
   "bharathadigopula/jenkins-controller-automation",
   "v1.0.7",
   "https://jenkins.bharathcloudops.com",
+  "https://jenkins-resources.bharathcloudops.com",
   "10.10.10.68",
   "",
   "{\"admin_password\":\"AAAAAAAAAAAAAAAAAAAAAAAA\",\"github_token\":\"github-token-at-least-twenty\"}"
@@ -267,6 +275,9 @@ for readiness_marker in \
   jenkins_service=ready \
   jenkins_authentication=ready \
   jenkins_metrics=ready \
+  jenkins_security_headers=ready \
+  jenkins_resource_root=ready \
+  jenkins_known_warnings=clear \
   jenkins_configuration=ready \
   jenkins_jobs=ready \
   jenkins_backup_timer=ready \
