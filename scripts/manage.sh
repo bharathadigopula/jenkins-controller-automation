@@ -685,6 +685,68 @@ status_controller() {
 }
 
 #==============================================================================
+# REPOSITORY VALIDATION SCAN
+#==============================================================================
+
+scan_repositories() {
+  local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
+  local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local cookie_jar
+  local crumb
+  local crumb_field
+  local crumb_response
+  local repository
+  local repositories=(
+    bharath-oci-host-config
+    github-pipeline-templates
+    jenkins-controller-automation
+    jenkins-pipeline-templates
+    monitoring-stack-automation
+    shared-host-automation
+    terraform-oci-modules
+    tf-bharath-oci-infra
+  )
+
+  require_root
+  wait_for_endpoint "$controller_origin/api/json" "$admin_password_file"
+  cookie_jar=$(mktemp)
+  chmod 0600 "$cookie_jar"
+  crumb_response=$(curl --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    --cookie "$cookie_jar" \
+    --cookie-jar "$cookie_jar" \
+    "$controller_origin/crumbIssuer/api/json")
+  crumb_field=$(jq -r '.crumbRequestField' <<< "$crumb_response")
+  crumb=$(jq -r '.crumb' <<< "$crumb_response")
+  if [[ -z "$crumb_field" || "$crumb_field" == "null" || -z "$crumb" || "$crumb" == "null" ]]; then
+    rm -f "$cookie_jar"
+    printf 'Jenkins did not return a valid CSRF crumb for repository scans.\n' >&2
+    return 1
+  fi
+
+  for repository in "${repositories[@]}"; do
+    curl --fail --silent --show-error --output /dev/null --request POST \
+      --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+      --cookie "$cookie_jar" \
+      --header "$crumb_field:$crumb" \
+      "$controller_origin/job/$repository/job/validate/build?delay=0sec"
+  done
+  printf 'jenkins_repository_scans=scheduled\n'
+
+  for repository in "${repositories[@]}"; do
+    curl --fail --silent --show-error --output /dev/null --request POST \
+      --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+      --cookie "$cookie_jar" \
+      --header "$crumb_field:$crumb" \
+      "$controller_origin/job/$repository/job/validate/job/main/build?delay=0sec"
+  done
+
+  rm -f "$cookie_jar"
+  printf 'jenkins_main_builds=scheduled\n'
+  printf 'jenkins_scan=ready\n'
+}
+
+#==============================================================================
 # CONTROLLER ROLLBACK
 #==============================================================================
 
@@ -737,6 +799,9 @@ case "$action" in
     ;;
   status)
     status_controller
+    ;;
+  scan)
+    scan_repositories
     ;;
   recover)
     recover_controller
