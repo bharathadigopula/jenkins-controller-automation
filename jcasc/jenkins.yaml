@@ -99,7 +99,7 @@ unclassified:
   globalLibraries:
     libraries:
       - name: jenkins-pipeline-templates
-        defaultVersion: v1.3.0
+        defaultVersion: v1.4.0
         allowVersionOverride: true
         implicit: false
         includeInChangesets: true
@@ -114,12 +114,64 @@ unclassified:
     url: ${JENKINS_RESOURCE_ROOT_URL}
 
 #==============================================================================
-# MANAGED PRODUCTION JOBS
+# MANAGED REPOSITORY JOBS
 #==============================================================================
 
 jobs:
+  - script: |
+      def validationRepositories = [
+        [name: 'bharath-oci-host-config', description: 'Private OCI host configuration'],
+        [name: 'github-pipeline-templates', description: 'Reusable GitHub workflow templates'],
+        [name: 'jenkins-controller-automation', description: 'Jenkins controller automation'],
+        [name: 'jenkins-pipeline-templates', description: 'Jenkins shared pipeline library'],
+        [name: 'monitoring-stack-automation', description: 'Monitoring stack automation'],
+        [name: 'shared-host-automation', description: 'Shared host automation'],
+        [name: 'terraform-oci-modules', description: 'Shared OCI Terraform modules'],
+        [name: 'tf-bharath-oci-infra', description: 'OCI production Terraform infrastructure']
+      ]
+      validationRepositories.each { repositoryConfig ->
+        folder(repositoryConfig.name) {
+          displayName(repositoryConfig.name)
+          description(repositoryConfig.description)
+        }
+        multibranchPipelineJob(repositoryConfig.name + '/validate') {
+          description('Automatic main and pull request validation for ' + repositoryConfig.name)
+          branchSources {
+            github {
+              id(repositoryConfig.name + '-validation')
+              scanCredentialsId('github-scm')
+              checkoutCredentialsId('github-scm')
+              repoOwner('bharathadigopula')
+              repository(repositoryConfig.name)
+              includes('main')
+              excludes('')
+              buildOriginBranch(true)
+              buildOriginBranchWithPR(false)
+              buildOriginPRHead(true)
+              buildOriginPRMerge(false)
+              buildForkPRHead(false)
+              buildForkPRMerge(false)
+            }
+          }
+          factory {
+            workflowBranchProjectFactory {
+              scriptPath('.jenkins/pipelines/validate.groovy')
+            }
+          }
+          orphanedItemStrategy {
+            discardOldItems {
+              numToKeep(20)
+            }
+          }
+          triggers {
+            periodicFolderTrigger {
+              interval('5m')
+            }
+          }
+        }
+      }
   - script: >
-      pipelineJob('configure-production-jenkins') {
+      pipelineJob('bharath-oci-host-config/configure-jenkins') {
         description('Repository-managed Jenkins controller lifecycle')
         definition {
           cpsScm {
@@ -138,7 +190,7 @@ jobs:
         }
       }
   - script: >
-      pipelineJob('configure-production-monitoring') {
+      pipelineJob('bharath-oci-host-config/configure-monitoring') {
         description('Repository-managed monitoring stack lifecycle')
         definition {
           cpsScm {
@@ -157,7 +209,7 @@ jobs:
         }
       }
   - script: >
-      pipelineJob('operate-production-oci-infrastructure') {
+      pipelineJob('tf-bharath-oci-infra/operate-infrastructure') {
         description('Repository-managed OCI production Terraform lifecycle')
         definition {
           cpsScm {
@@ -176,7 +228,7 @@ jobs:
         }
       }
   - script: >
-      pipelineJob('operate-production-host-network') {
+      pipelineJob('bharath-oci-host-config/operate-host-network') {
         description('Repository-managed production secondary IP lifecycle')
         definition {
           cpsScm {
@@ -195,7 +247,7 @@ jobs:
         }
       }
   - script: >
-      pipelineJob('operate-production-ingress-connector') {
+      pipelineJob('bharath-oci-host-config/operate-ingress-connector') {
         description('Repository-managed production Cloudflare connector lifecycle')
         definition {
           cpsScm {
@@ -214,14 +266,23 @@ jobs:
         }
       }
   - script: >
-      pipelineJob('validate-github-pipeline-templates') {
-        description('Validation-only checks for shared GitHub pipeline templates')
+      pipelineJob('jenkins-controller-automation/scheduled-validation') {
+        description('Daily validation of Jenkins controller version pins')
+        properties {
+          pipelineTriggers {
+            triggers {
+              cron {
+                spec('17 3 * * *')
+              }
+            }
+          }
+        }
         definition {
           cpsScm {
             scm {
               git {
                 remote {
-                  url('https://github.com/bharathadigopula/github-pipeline-templates.git')
+                  url('https://github.com/bharathadigopula/jenkins-controller-automation.git')
                   credentials('github-scm')
                 }
                 branch('*/main')
@@ -233,52 +294,23 @@ jobs:
         }
       }
   - script: >
-      pipelineJob('validate-jenkins-pipeline-templates') {
-        description('Validation-only checks for the shared Jenkins library')
-        definition {
-          cpsScm {
-            scm {
-              git {
-                remote {
-                  url('https://github.com/bharathadigopula/jenkins-pipeline-templates.git')
-                  credentials('github-scm')
-                }
-                branch('*/main')
+      pipelineJob('monitoring-stack-automation/scheduled-validation') {
+        description('Daily validation of monitoring stack version pins')
+        properties {
+          pipelineTriggers {
+            triggers {
+              cron {
+                spec('29 3 * * *')
               }
             }
-            scriptPath('.jenkins/pipelines/validate.groovy')
-            lightweight(true)
           }
         }
-      }
-  - script: >
-      pipelineJob('validate-shared-host-automation') {
-        description('Validation-only checks for shared host automation')
         definition {
           cpsScm {
             scm {
               git {
                 remote {
-                  url('https://github.com/bharathadigopula/shared-host-automation.git')
-                  credentials('github-scm')
-                }
-                branch('*/main')
-              }
-            }
-            scriptPath('.jenkins/pipelines/validate.groovy')
-            lightweight(true)
-          }
-        }
-      }
-  - script: >
-      pipelineJob('validate-terraform-oci-modules') {
-        description('Validation-only checks for shared OCI Terraform modules')
-        definition {
-          cpsScm {
-            scm {
-              git {
-                remote {
-                  url('https://github.com/bharathadigopula/terraform-oci-modules.git')
+                  url('https://github.com/bharathadigopula/monitoring-stack-automation.git')
                   credentials('github-scm')
                 }
                 branch('*/main')

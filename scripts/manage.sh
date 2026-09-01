@@ -27,6 +27,110 @@ health_failure_file="${JENKINS_HEALTH_FAILURE_FILE:-/run/jenkins-controller-heal
 maintenance_file="${JENKINS_MAINTENANCE_FILE:-/run/jenkins-controller-maintenance}"
 
 #==============================================================================
+# MANAGED JOB TOPOLOGY
+#==============================================================================
+
+managed_jobs_ready() {
+  jq -e '
+    def child($folder; $name; $class):
+      any(.jobs[];
+        .name == $folder and
+        ._class == "com.cloudbees.hudson.plugins.folder.Folder" and
+        any(.jobs[]?; .name == $name and ._class == $class)
+      );
+    child("bharath-oci-host-config"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("github-pipeline-templates"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("jenkins-controller-automation"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("jenkins-pipeline-templates"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("monitoring-stack-automation"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("shared-host-automation"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("terraform-oci-modules"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("tf-bharath-oci-infra"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("bharath-oci-host-config"; "configure-jenkins"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("bharath-oci-host-config"; "configure-monitoring"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("bharath-oci-host-config"; "operate-host-network"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("bharath-oci-host-config"; "operate-ingress-connector"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("tf-bharath-oci-infra"; "operate-infrastructure"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("jenkins-controller-automation"; "scheduled-validation"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("monitoring-stack-automation"; "scheduled-validation"; "org.jenkinsci.plugins.workflow.job.WorkflowJob")
+  ' >/dev/null
+}
+
+reconcile_legacy_jobs() {
+  local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
+  local controller_jobs
+  local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+  local cookie_jar
+  local crumb
+  local crumb_field
+  local crumb_response
+  local legacy_job
+  local response_code
+  local legacy_jobs=(
+    configure-production-jenkins
+    configure-production-monitoring
+    operate-production-oci-infrastructure
+    operate-production-host-network
+    operate-production-ingress-connector
+    validate-github-pipeline-templates
+    validate-jenkins-pipeline-templates
+    validate-shared-host-automation
+    validate-terraform-oci-modules
+  )
+
+  wait_for_endpoint "$controller_origin/api/json" "$admin_password_file"
+  controller_jobs=$(curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/api/json?tree=jobs[name,_class,jobs[name,_class]]")
+  if ! managed_jobs_ready <<< "$controller_jobs"; then
+    printf 'New Jenkins job topology is incomplete; legacy jobs will not be removed.\n' >&2
+    return 1
+  fi
+
+  cookie_jar=$(mktemp)
+  chmod 0600 "$cookie_jar"
+  crumb_response=$(curl --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    --cookie "$cookie_jar" \
+    --cookie-jar "$cookie_jar" \
+    "$controller_origin/crumbIssuer/api/json")
+  crumb_field=$(jq -r '.crumbRequestField' <<< "$crumb_response")
+  crumb=$(jq -r '.crumb' <<< "$crumb_response")
+  if [[ -z "$crumb_field" || "$crumb_field" == "null" || -z "$crumb" || "$crumb" == "null" ]]; then
+    rm -f "$cookie_jar"
+    printf 'Jenkins did not return a valid CSRF crumb for job reconciliation.\n' >&2
+    return 1
+  fi
+
+  for legacy_job in "${legacy_jobs[@]}"; do
+    response_code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+      --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+      --cookie "$cookie_jar" \
+      "$controller_origin/job/$legacy_job/api/json")
+    case "$response_code" in
+      200)
+        curl --fail --silent --show-error --output /dev/null --request POST \
+          --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+          --cookie "$cookie_jar" \
+          --header "$crumb_field:$crumb" \
+          "$controller_origin/job/$legacy_job/doDelete"
+        ;;
+      404)
+        ;;
+      *)
+        rm -f "$cookie_jar"
+        printf 'Unexpected HTTP %s while checking legacy Jenkins job %s.\n' \
+          "$response_code" "$legacy_job" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  rm -f "$cookie_jar"
+  printf 'jenkins_legacy_jobs=clear\n'
+}
+
+#==============================================================================
 # CONTROLLER VALIDATION
 #==============================================================================
 
@@ -113,6 +217,8 @@ deploy_controller() {
   systemctl enable --now jenkins-controller-backup.timer
   systemctl enable --now jenkins-controller-health.timer
   printf 'jenkins_deploy=ready\n'
+  activate_managed_jobs
+  reconcile_legacy_jobs
   verify_controller
   rm -f "$maintenance_file"
   trap - EXIT
@@ -145,6 +251,36 @@ wait_for_endpoint() {
     --file "$install_root/current/compose.yaml" \
     ps >&2 || true
   return 1
+}
+
+activate_managed_jobs() {
+  local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
+  local controller_jobs
+  local controller_origin="http://${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080"
+
+  wait_for_endpoint "$controller_origin/login"
+  controller_jobs=$(curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/api/json?tree=jobs[name,_class,jobs[name,_class]]")
+  if managed_jobs_ready <<< "$controller_jobs"; then
+    printf 'jenkins_job_activation=ready\n'
+    return 0
+  fi
+
+  printf 'jenkins_job_activation=restart_required\n'
+  if ! systemctl restart jenkins-controller.service; then
+    journalctl --unit jenkins-controller.service --no-pager --lines 200 >&2
+    return 1
+  fi
+  wait_for_endpoint "$controller_origin/login"
+  controller_jobs=$(curl --globoff --fail --silent --show-error \
+    --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
+    "$controller_origin/api/json?tree=jobs[name,_class,jobs[name,_class]]")
+  if ! managed_jobs_ready <<< "$controller_jobs"; then
+    printf 'New Jenkins job topology did not activate after the bounded restart.\n' >&2
+    return 1
+  fi
+  printf 'jenkins_job_activation=ready\n'
 }
 
 wait_for_metrics() {
@@ -317,13 +453,11 @@ verify_controller() {
   fi
   controller_jobs=$(curl --globoff --fail --silent --show-error \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
-    "$controller_origin/api/json?tree=jobs[name]")
-  if ! jq -e '
-    [.jobs[].name] as $jobs |
-    ($jobs | index("configure-production-jenkins")) != null and
-    ($jobs | index("configure-production-monitoring")) != null
-  ' <<< "$controller_jobs" >/dev/null; then
-    printf 'Jenkins managed production jobs were not provisioned.\n' >&2
+    "$controller_origin/api/json?tree=jobs[name,_class,jobs[name,_class]]")
+  if ! managed_jobs_ready <<< "$controller_jobs" || \
+    [[ "$(jq -r '[.jobs[].name] | sort | join(" ")' <<< "$controller_jobs")" != \
+      "bharath-oci-host-config github-pipeline-templates jenkins-controller-automation jenkins-pipeline-templates monitoring-stack-automation shared-host-automation terraform-oci-modules tf-bharath-oci-infra" ]]; then
+    printf 'Jenkins managed repository job topology is invalid.\n' >&2
     return 1
   fi
   if ! systemctl is-enabled --quiet jenkins-controller-backup.timer || \
@@ -348,6 +482,7 @@ verify_controller() {
   printf 'jenkins_known_warnings=clear\n'
   printf 'jenkins_configuration=ready\n'
   printf 'jenkins_jobs=ready\n'
+  printf 'jenkins_legacy_jobs=clear\n'
   printf 'jenkins_backup_timer=ready\n'
   printf 'jenkins_verify=ready\n'
 }
