@@ -120,6 +120,7 @@ unclassified:
 jobs:
   - script: |
       def validationRepositories = [
+        [name: 'backstage-platform', description: 'Shared Backstage developer platform'],
         [name: 'bharath-oci-host-config', description: 'Private OCI host configuration'],
         [name: 'github-pipeline-templates', description: 'Reusable GitHub workflow templates'],
         [name: 'jenkins-controller-automation', description: 'Jenkins controller automation'],
@@ -204,6 +205,25 @@ jobs:
               }
             }
             scriptPath('.jenkins/pipelines/monitoring-stack.groovy')
+            lightweight(true)
+          }
+        }
+      }
+  - script: >
+      pipelineJob('bharath-oci-host-config/configure-backstage') {
+        description('Repository-managed Backstage platform lifecycle')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/bharathadigopula/bharath-oci-host-config.git')
+                  credentials('github-scm')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('.jenkins/pipelines/backstage-platform.groovy')
             lightweight(true)
           }
         }

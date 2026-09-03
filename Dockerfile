@@ -6,7 +6,7 @@
 # JENKINS CONTROLLER BASE IMAGE
 #==============================================================================
 
-FROM jenkins/jenkins:2.568.2-lts-jdk21
+FROM jenkins/jenkins:2.568.3-lts-jdk21
 
 #==============================================================================
 # ROOT IMAGE ASSEMBLY
