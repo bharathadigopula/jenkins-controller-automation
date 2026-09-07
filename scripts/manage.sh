@@ -874,6 +874,7 @@ rollback_controller() {
 case "$action" in
   validate)
     validate_controller
+    printf 'jenkins_validate=ready\n'
     ;;
   dry-run)
     validate_controller
