@@ -415,7 +415,8 @@ if ! grep -Fq 'jenkins_metrics_http_code=' "$repository_root/scripts/manage.sh" 
   exit 1
 fi
 
-if [[ "$(grep -Fc "printf 'jenkins_deploy=ready" "$repository_root/scripts/manage.sh")" != "2" ]] || \
+if ! grep -Fq "printf 'jenkins_validate=ready" "$repository_root/scripts/manage.sh" || \
+  [[ "$(grep -Fc "printf 'jenkins_deploy=ready" "$repository_root/scripts/manage.sh")" != "2" ]] || \
   [[ "$(grep -Fc "printf 'jenkins_test_restore=ready" "$repository_root/scripts/manage.sh")" != "2" ]] || \
   ! grep -Fq 'jenkins_metrics_wait=attempt_' "$repository_root/scripts/manage.sh"; then
   printf 'Long Jenkins lifecycle actions must retain required markers and bounded progress output.\n' >&2
