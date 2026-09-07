@@ -19,10 +19,10 @@ CONTROLLER PROFILE
 | Setting | Default |
 | --- | --- |
 | Jenkins | `2.568.2-lts-jdk21` |
-| Docker Engine and CLI | `29.7.2` |
+| Docker Engine and CLI | `29.8.0` |
 | containerd | `2.3.3` |
 | Docker Buildx | `0.36.1` |
-| Docker Compose | `5.5.0` |
+| Docker Compose | `5.5.1` |
 | Java heap | 512 MB initial, 1 GB maximum |
 | Controller limit | 0.70 CPU and 2 GB memory |
 | Platform agent limit | 0.50 CPU and 2 GB memory |
