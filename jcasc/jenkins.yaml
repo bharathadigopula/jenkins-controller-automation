@@ -99,7 +99,7 @@ unclassified:
   globalLibraries:
     libraries:
       - name: jenkins-pipeline-templates
-        defaultVersion: v1.4.0
+        defaultVersion: v1.5.0
         allowVersionOverride: true
         implicit: false
         includeInChangesets: true
@@ -123,12 +123,14 @@ jobs:
         [name: 'backstage-platform', description: 'Shared Backstage developer platform'],
         [name: 'bharath-oci-host-config', description: 'Private OCI host configuration'],
         [name: 'github-pipeline-templates', description: 'Reusable GitHub workflow templates'],
+        [name: 'ignitox-wordpress', description: 'Private BharathCoudOps WordPress image'],
         [name: 'jenkins-controller-automation', description: 'Jenkins controller automation'],
         [name: 'jenkins-pipeline-templates', description: 'Jenkins shared pipeline library'],
         [name: 'monitoring-stack-automation', description: 'Monitoring stack automation'],
         [name: 'shared-host-automation', description: 'Shared host automation'],
         [name: 'terraform-oci-modules', description: 'Shared OCI Terraform modules'],
-        [name: 'tf-bharath-oci-infra', description: 'OCI production Terraform infrastructure']
+        [name: 'tf-bharath-oci-infra', description: 'OCI production Terraform infrastructure'],
+        [name: 'wordpress-kubernetes-automation', description: 'Reusable WordPress Kubernetes automation']
       ]
       validationRepositories.each { repositoryConfig ->
         folder(repositoryConfig.name) {
@@ -337,6 +339,44 @@ jobs:
               }
             }
             scriptPath('.jenkins/pipelines/validate.groovy')
+            lightweight(true)
+          }
+        }
+      }
+  - script: >
+      pipelineJob('ignitox-wordpress/publish-image') {
+        description('Validate, scan, publish, and deploy the private WordPress image')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/bharathadigopula/ignitox-wordpress.git')
+                  credentials('github-scm')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('.jenkins/pipelines/publish.groovy')
+            lightweight(true)
+          }
+        }
+      }
+  - script: >
+      pipelineJob('bharath-oci-host-config/operate-wordpress') {
+        description('Repository-managed WordPress Kubernetes lifecycle')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('https://github.com/bharathadigopula/bharath-oci-host-config.git')
+                  credentials('github-scm')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('.jenkins/pipelines/wordpress.groovy')
             lightweight(true)
           }
         }

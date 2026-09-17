@@ -252,7 +252,7 @@ if grep -Eq '^[[:space:]]*(crumbIssuer:|excludeClientIPFromCrumb:)' \
   exit 1
 fi
 
-if ! grep -Fq 'defaultVersion: v1.4.0' "$repository_root/jcasc/jenkins.yaml" || \
+if ! grep -Fq 'defaultVersion: v1.5.0' "$repository_root/jcasc/jenkins.yaml" || \
   ! grep -Fq 'credentials('"'"'github-scm'"'"')' "$repository_root/jcasc/jenkins.yaml"; then
   printf 'JCasC must provision the pinned shared library and managed production jobs.\n' >&2
   exit 1
@@ -261,12 +261,14 @@ fi
 for managed_repository in \
   bharath-oci-host-config \
   github-pipeline-templates \
+  ignitox-wordpress \
   jenkins-controller-automation \
   jenkins-pipeline-templates \
   monitoring-stack-automation \
   shared-host-automation \
   terraform-oci-modules \
-  tf-bharath-oci-infra; do
+  tf-bharath-oci-infra \
+  wordpress-kubernetes-automation; do
   if ! grep -Fq "[name: '$managed_repository'" "$repository_root/jcasc/jenkins.yaml"; then
     printf 'Missing repository-managed Jenkins folder: %s\n' "$managed_repository" >&2
     exit 1
@@ -279,6 +281,8 @@ for managed_job in \
   bharath-oci-host-config/operate-host-network \
   bharath-oci-host-config/operate-ingress-connector \
   tf-bharath-oci-infra/operate-infrastructure \
+  ignitox-wordpress/publish-image \
+  bharath-oci-host-config/operate-wordpress \
   jenkins-controller-automation/scheduled-validation \
   monitoring-stack-automation/scheduled-validation; do
   if ! grep -Fq "pipelineJob('$managed_job')" "$repository_root/jcasc/jenkins.yaml"; then
@@ -313,7 +317,9 @@ for pipeline_path in \
   .jenkins/pipelines/monitoring-stack.groovy \
   .jenkins/pipelines/host-network.groovy \
   .jenkins/pipelines/ingress-connector.groovy \
+  .jenkins/pipelines/publish.groovy \
   .jenkins/pipelines/production-infrastructure.groovy \
+  .jenkins/pipelines/wordpress.groovy \
   .jenkins/pipelines/validate.groovy; do
   if ! grep -Fq "scriptPath('$pipeline_path')" "$repository_root/jcasc/jenkins.yaml"; then
     printf 'Missing organized Jenkins pipeline path: %s\n' "$pipeline_path" >&2
