@@ -70,6 +70,11 @@ if ! grep -Fq 'export HOME=/home/jenkins' "$repository_root/scripts/agent-entryp
   exit 1
 fi
 
+if ! grep -Fq "chown -R 1000:1000 \"\$agent_workdir\"" "$repository_root/scripts/agent-entrypoint.sh"; then
+  printf 'The platform agent must restore persistent workspace ownership before startup.\n' >&2
+  exit 1
+fi
+
 #==============================================================================
 # PLUGIN CATALOGUE VALIDATION
 #==============================================================================

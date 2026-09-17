@@ -15,6 +15,7 @@ set -euo pipefail
 #==============================================================================
 
 agent_name=${JENKINS_AGENT_NAME:-platform-agent}
+agent_workdir=${JENKINS_AGENT_WORKDIR:-/home/jenkins/agent}
 controller_url=${JENKINS_URL:-http://jenkins:8080}
 secret_directory=/run/jenkins-agent-secret
 secret_file=$secret_directory/secret
@@ -97,6 +98,8 @@ run_agent() {
   export JENKINS_SECRET
   JENKINS_SECRET=$(< "$secret_file")
   docker_socket_gid=$(stat --format '%g' /var/run/docker.sock)
+  install -d -o 1000 -g 1000 -m 0755 "$agent_workdir"
+  chown -R 1000:1000 "$agent_workdir"
   export HOME=/home/jenkins
   exec setpriv \
     --reuid 1000 \
