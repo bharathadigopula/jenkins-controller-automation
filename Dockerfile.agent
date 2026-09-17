@@ -6,7 +6,7 @@
 # DOCKER CLI SOURCE IMAGE
 #==============================================================================
 
-FROM docker:29.8.0-cli AS docker-cli
+FROM docker:29.8.1-cli AS docker-cli
 
 #==============================================================================
 # JENKINS INBOUND AGENT BASE IMAGE
