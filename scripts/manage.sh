@@ -51,6 +51,8 @@ managed_jobs_ready() {
     child("bharath-oci-host-config"; "operate-host-network"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
     child("bharath-oci-host-config"; "operate-ingress-connector"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
     child("tf-bharath-oci-infra"; "operate-infrastructure"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("ignitox-wordpress"; "publish-image"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("ignitox-wordpress"; "deploy-wordpress"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
     child("jenkins-controller-automation"; "scheduled-validation"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
     child("monitoring-stack-automation"; "scheduled-validation"; "org.jenkinsci.plugins.workflow.job.WorkflowJob")
   ' >/dev/null
@@ -72,6 +74,7 @@ reconcile_legacy_jobs() {
     operate-production-oci-infrastructure
     operate-production-host-network
     operate-production-ingress-connector
+    bharath-oci-host-config/job/operate-wordpress
     validate-github-pipeline-templates
     validate-jenkins-pipeline-templates
     validate-shared-host-automation
