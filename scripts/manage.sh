@@ -155,6 +155,7 @@ require_root() {
 
 write_environment() {
   cat > "$release_path/.env" <<EOF
+GITHUB_REGISTRY_TOKEN_FILE=./secrets/github-registry-token
 GITHUB_TOKEN_FILE=./secrets/github-token
 JENKINS_ADMIN_ID=${JENKINS_ADMIN_ID:-admin}
 JENKINS_ADMIN_PASSWORD_FILE=./secrets/jenkins-admin-password
@@ -175,9 +176,10 @@ deploy_controller() {
   if ! jq -e '
     type == "object" and
     (.admin_password | type == "string" and length >= 16 and (contains("\n") | not)) and
-    (.github_token | type == "string" and length >= 20 and (contains("\n") | not))
+    (.github_token | type == "string" and length >= 20 and (contains("\n") | not)) and
+    (.registry_token | type == "string" and length >= 20 and (contains("\n") | not))
   ' <<< "$secret_bundle" >/dev/null; then
-    printf 'Secret bundle must contain admin_password and github_token.\n' >&2
+    printf 'Secret bundle must contain administrator, GitHub SCM, and registry credentials.\n' >&2
     exit 1
   fi
 
@@ -189,9 +191,12 @@ deploy_controller() {
   cp -a "$source_root/." "$release_path/"
   install -d -m 0700 "$release_path/secrets"
   jq -r '.admin_password' <<< "$secret_bundle" > "$release_path/secrets/jenkins-admin-password"
+  jq -r '.registry_token' <<< "$secret_bundle" > "$release_path/secrets/github-registry-token"
   jq -r '.github_token' <<< "$secret_bundle" > "$release_path/secrets/github-token"
-  chown 1000:1000 "$release_path/secrets/jenkins-admin-password" "$release_path/secrets/github-token"
-  chmod 0400 "$release_path/secrets/jenkins-admin-password" "$release_path/secrets/github-token"
+  chown 1000:1000 "$release_path/secrets/jenkins-admin-password" \
+    "$release_path/secrets/github-registry-token" "$release_path/secrets/github-token"
+  chmod 0400 "$release_path/secrets/jenkins-admin-password" \
+    "$release_path/secrets/github-registry-token" "$release_path/secrets/github-token"
   write_environment
 
   if [[ -L "$install_root/current" ]]; then
@@ -447,7 +452,7 @@ verify_controller() {
     --project-directory "$install_root/current" \
     --file "$install_root/current/compose.yaml" \
     exec --no-TTY jenkins sh -c \
-      "grep -Fq '<id>github-token</id>' /var/jenkins_home/credentials.xml && grep -Fq '<id>github-scm</id>' /var/jenkins_home/credentials.xml"; then
+      "grep -Fq '<id>github-token</id>' /var/jenkins_home/credentials.xml && grep -Fq '<id>github-scm</id>' /var/jenkins_home/credentials.xml && grep -Fq '<id>github-registry</id>' /var/jenkins_home/credentials.xml"; then
     printf 'Jenkins managed credentials were not provisioned.\n' >&2
     return 1
   fi

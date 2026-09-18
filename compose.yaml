@@ -64,6 +64,7 @@ services:
       - ${JENKINS_BIND_ADDRESS:-127.0.0.1}:8080:8080
     restart: unless-stopped
     secrets:
+      - github_registry_token
       - github_token
       - jenkins_admin_password
     volumes:
@@ -128,6 +129,8 @@ services:
   #==============================================================================
 
 secrets:
+  github_registry_token:
+    file: ${GITHUB_REGISTRY_TOKEN_FILE:-./secrets/github-registry-token}
   github_token:
     file: ${GITHUB_TOKEN_FILE:-./secrets/github-token}
   jenkins_admin_password:

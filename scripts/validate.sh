@@ -136,12 +136,13 @@ fi
 # SECRET BUNDLE VALIDATION
 #==============================================================================
 
-valid_secret_bundle='{"admin_password":"0123456789abcdef","github_token":"github-token-at-least-twenty"}'
-invalid_secret_bundle='{"admin_password":"short","github_token":"short"}'
+valid_secret_bundle='{"admin_password":"0123456789abcdef","github_token":"github-token-at-least-twenty","registry_token":"registry-token-at-least-twenty"}'
+invalid_secret_bundle='{"admin_password":"short","github_token":"short","registry_token":"short"}'
 secret_filter='
   type == "object" and
   (.admin_password | type == "string" and length >= 16 and (contains("\n") | not)) and
-  (.github_token | type == "string" and length >= 20 and (contains("\n") | not))
+  (.github_token | type == "string" and length >= 20 and (contains("\n") | not)) and
+  (.registry_token | type == "string" and length >= 20 and (contains("\n") | not))
 '
 
 jq -e "$secret_filter" <<< "$valid_secret_bundle" >/dev/null
@@ -159,7 +160,9 @@ if docker compose version >/dev/null 2>&1; then
   trap 'rm -rf "$temporary_directory"' EXIT
   printf 'validation-only\n' > "$temporary_directory/admin"
   printf 'validation-only\n' > "$temporary_directory/github"
+  printf 'validation-only\n' > "$temporary_directory/registry"
   JENKINS_ADMIN_PASSWORD_FILE="$temporary_directory/admin" \
+  GITHUB_REGISTRY_TOKEN_FILE="$temporary_directory/registry" \
   GITHUB_TOKEN_FILE="$temporary_directory/github" \
     docker compose --file "$repository_root/compose.yaml" config --quiet
 fi
@@ -238,7 +241,7 @@ sample_arguments=$(jq -cn '[
   "https://jenkins-resources.bharathcloudops.com",
   "10.10.10.68",
   "",
-  "{\"admin_password\":\"AAAAAAAAAAAAAAAAAAAAAAAA\",\"github_token\":\"github-token-at-least-twenty\"}"
+  "{\"admin_password\":\"AAAAAAAAAAAAAAAAAAAAAAAA\",\"github_token\":\"github-token-at-least-twenty\",\"registry_token\":\"registry-token-at-least-twenty\"}"
 ]')
 argument_line=$(jq -r '[.[] | @sh] | "set -- " + join(" ")' <<< "$sample_arguments")
 rendered_size=$(printf '%s\n%s' "$argument_line" "$(cat "$repository_root/scripts/bootstrap.sh")" | wc -c | tr -d ' ')
@@ -258,7 +261,8 @@ if grep -Eq '^[[:space:]]*(crumbIssuer:|excludeClientIPFromCrumb:)' \
 fi
 
 if ! grep -Fq 'defaultVersion: v1.5.0' "$repository_root/jcasc/jenkins.yaml" || \
-  ! grep -Fq 'credentials('"'"'github-scm'"'"')' "$repository_root/jcasc/jenkins.yaml"; then
+  ! grep -Fq 'credentials('"'"'github-scm'"'"')' "$repository_root/jcasc/jenkins.yaml" || \
+  ! grep -Fq 'id: github-registry' "$repository_root/jcasc/jenkins.yaml"; then
   printf 'JCasC must provision the pinned shared library and managed production jobs.\n' >&2
   exit 1
 fi
