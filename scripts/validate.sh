@@ -127,8 +127,9 @@ if grep -Fq 'hudson.model.DirectoryBrowserSupport.CSP=' "$repository_root/compos
   ! grep -Fq 'COLLECTING_METRICS_PERIOD_IN_SECONDS: "120"' "$repository_root/compose.yaml" || \
   ! grep -Eq '^ansicolor:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt" || \
   ! grep -Eq '^cloudbees-disk-usage-simple:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt" || \
-  ! grep -Eq '^github-branch-source:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt"; then
-  printf 'Jenkins UI CSP, resource isolation, disk metrics, and ANSI rendering must be explicitly configured.\n' >&2
+  ! grep -Eq '^github-branch-source:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt" || \
+  ! grep -Eq '^pipeline-stage-view:[A-Za-z0-9._-]+$' "$repository_root/plugins.txt"; then
+  printf 'Jenkins UI CSP, resource isolation, stage visualization, disk metrics, and ANSI rendering must be explicitly configured.\n' >&2
   exit 1
 fi
 
