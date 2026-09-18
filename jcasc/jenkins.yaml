@@ -90,7 +90,7 @@ credentials:
               username: bharathadigopula
               password: ${GITHUB_TOKEN}
               description: GitHub source control credential
-            - usernamePassword:
+          - usernamePassword:
               scope: GLOBAL
               id: github-registry
               username: bharathadigopula
