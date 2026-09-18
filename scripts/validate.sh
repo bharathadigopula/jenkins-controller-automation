@@ -292,7 +292,7 @@ for managed_job in \
   bharath-oci-host-config/operate-ingress-connector \
   tf-bharath-oci-infra/operate-infrastructure \
   ignitox-wordpress/publish-image \
-  bharath-oci-host-config/operate-wordpress \
+  ignitox-wordpress/deploy-wordpress \
   jenkins-controller-automation/scheduled-validation \
   monitoring-stack-automation/scheduled-validation; do
   if ! grep -Fq "pipelineJob('$managed_job')" "$repository_root/jcasc/jenkins.yaml"; then

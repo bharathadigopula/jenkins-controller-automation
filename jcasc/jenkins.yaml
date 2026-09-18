@@ -369,7 +369,7 @@ jobs:
         }
       }
   - script: >
-      pipelineJob('bharath-oci-host-config/operate-wordpress') {
+      pipelineJob('ignitox-wordpress/deploy-wordpress') {
         description('Repository-managed WordPress Kubernetes lifecycle')
         definition {
           cpsScm {
