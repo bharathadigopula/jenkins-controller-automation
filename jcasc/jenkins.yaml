@@ -90,6 +90,12 @@ credentials:
               username: bharathadigopula
               password: ${GITHUB_TOKEN}
               description: GitHub source control credential
+            - usernamePassword:
+              scope: GLOBAL
+              id: github-registry
+              username: bharathadigopula
+              password: ${GITHUB_REGISTRY_TOKEN}
+              description: GitHub container registry credential
 
 #==============================================================================
 # CONTROLLER LOCATION
