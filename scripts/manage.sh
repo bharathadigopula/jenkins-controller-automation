@@ -8,7 +8,8 @@
 # SHELL SAFETY
 #==============================================================================
 
-set -euo pipefail
+set -Eeuo pipefail
+trap 'printf "jenkins_failure=line_%s\n" "$LINENO"' ERR
 
 #==============================================================================
 # LIFECYCLE INPUTS
