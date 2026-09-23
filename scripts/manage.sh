@@ -46,6 +46,10 @@ managed_jobs_ready() {
     child("shared-host-automation"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
     child("terraform-oci-modules"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
     child("tf-bharath-oci-infra"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("clinirova"; "validate"; "org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject") and
+    child("clinirova"; "publish-runtime"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("clinirova"; "publish-migration"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
+    child("clinirova"; "deploy"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
     child("bharath-oci-host-config"; "configure-jenkins"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
     child("bharath-oci-host-config"; "configure-monitoring"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
     child("bharath-oci-host-config"; "operate-host-network"; "org.jenkinsci.plugins.workflow.job.WorkflowJob") and
