@@ -127,7 +127,7 @@ jobs:
   - script: |
       def validationRepositories = [
         [name: 'backstage-platform', description: 'Shared Backstage developer platform'],
-        [name: 'clinirova', description: 'Clinirova clinic application'],
+        [name: 'clinirova', displayName: 'Clinirova', description: 'Clinirova application validation, image releases, and production deployment'],
         [name: 'bharath-oci-host-config', description: 'Private OCI host configuration'],
         [name: 'github-pipeline-templates', description: 'Reusable GitHub workflow templates'],
         [name: 'ignitox-wordpress', description: 'Private BharathCoudOps WordPress image'],
@@ -141,10 +141,13 @@ jobs:
       ]
       validationRepositories.each { repositoryConfig ->
         folder(repositoryConfig.name) {
-          displayName(repositoryConfig.name)
+          displayName(repositoryConfig.displayName ?: repositoryConfig.name)
           description(repositoryConfig.description)
         }
         multibranchPipelineJob(repositoryConfig.name + '/validate') {
+          if (repositoryConfig.name == 'clinirova') {
+            displayName('01 - Validate Changes')
+          }
           description('Automatic main and pull request validation for ' + repositoryConfig.name)
           branchSources {
             github {
@@ -181,9 +184,15 @@ jobs:
         }
       }
   - script: |
-      ['publish-runtime', 'publish-migration', 'deploy'].each { lifecycle ->
-        pipelineJob('clinirova/' + lifecycle) {
-          description('Repository-managed Clinirova ' + lifecycle)
+      def clinirovaJobs = [
+        [name: 'publish-runtime', displayName: '02 - Publish Application Image', description: 'Build, security-scan, and publish the Clinirova application image. Publication requires approval.'],
+        [name: 'publish-migration', displayName: '03 - Publish Database Migration Image', description: 'Build, security-scan, and publish the migration image for the same application release. Does not change the production database.'],
+        [name: 'deploy', displayName: '04 - Deploy Production', description: 'Deploy approved application and migration image digests to clinirova.bharathcloudops.com. Includes backup, migration, readiness, and email checks. Production changes require approval.']
+      ]
+      clinirovaJobs.each { lifecycle ->
+        pipelineJob('clinirova/' + lifecycle.name) {
+          displayName(lifecycle.displayName)
+          description(lifecycle.description)
           definition {
             cpsScm {
               scm {
@@ -195,7 +204,7 @@ jobs:
                   branch('*/main')
                 }
               }
-              scriptPath('.jenkins/pipelines/' + lifecycle + '.groovy')
+              scriptPath('.jenkins/pipelines/' + lifecycle.name + '.groovy')
               lightweight(true)
             }
           }

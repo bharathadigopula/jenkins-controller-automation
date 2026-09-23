@@ -443,4 +443,5 @@ fi
 # VALIDATION RESULT
 #==============================================================================
 
+bash "$repository_root/scripts/test-job-topology.sh"
 printf 'jenkins_validation=ready\n'
