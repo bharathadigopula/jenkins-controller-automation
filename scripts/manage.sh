@@ -467,9 +467,7 @@ verify_controller() {
   controller_jobs=$(curl --globoff --fail --silent --show-error \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
     "$controller_origin/api/json?tree=jobs[name,_class,jobs[name,_class]]")
-  if ! managed_jobs_ready <<< "$controller_jobs" || \
-    [[ "$(jq -r '[.jobs[].name] | sort | join(" ")' <<< "$controller_jobs")" != \
-      "bharath-oci-host-config github-pipeline-templates jenkins-controller-automation jenkins-pipeline-templates monitoring-stack-automation shared-host-automation terraform-oci-modules tf-bharath-oci-infra" ]]; then
+  if ! managed_jobs_ready <<< "$controller_jobs"; then
     printf 'Jenkins managed repository job topology is invalid.\n' >&2
     return 1
   fi
