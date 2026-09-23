@@ -16,7 +16,7 @@ managed_jobs_ready <<< "$topology"
 extended_topology=$(jq '.jobs += [{name:"backstage-platform",_class:"com.cloudbees.hudson.plugins.folder.Folder",jobs:[]},{name:"wordpress-kubernetes-automation",_class:"com.cloudbees.hudson.plugins.folder.Folder",jobs:[]}]' <<< "$topology")
 managed_jobs_ready <<< "$extended_topology"
 verification=$(sed -n '/^verify_controller()/,/^}/p' "$repository_root/scripts/manage.sh")
-if [[ "$verification" != *'if ! managed_jobs_ready <<< "$controller_jobs"; then'* ]]; then
+if [[ "$verification" != *"if ! managed_jobs_ready <<< \"\$controller_jobs\"; then"* ]]; then
   printf 'Final verification must use the shared managed job topology gate.\n' >&2
   exit 1
 fi
