@@ -127,6 +127,7 @@ jobs:
   - script: |
       def validationRepositories = [
         [name: 'backstage-platform', description: 'Shared Backstage developer platform'],
+        [name: 'clinirova', description: 'Clinirova clinic application'],
         [name: 'bharath-oci-host-config', description: 'Private OCI host configuration'],
         [name: 'github-pipeline-templates', description: 'Reusable GitHub workflow templates'],
         [name: 'ignitox-wordpress', description: 'Private BharathCoudOps WordPress image'],
@@ -175,6 +176,27 @@ jobs:
           triggers {
             periodicFolderTrigger {
               interval('5m')
+            }
+          }
+        }
+      }
+  - script: |
+      ['publish-runtime', 'publish-migration', 'deploy'].each { lifecycle ->
+        pipelineJob('clinirova/' + lifecycle) {
+          description('Repository-managed Clinirova ' + lifecycle)
+          definition {
+            cpsScm {
+              scm {
+                git {
+                  remote {
+                    url('https://github.com/bharathadigopula/clinirova.git')
+                    credentials('github-scm')
+                  }
+                  branch('*/main')
+                }
+              }
+              scriptPath('.jenkins/pipelines/' + lifecycle + '.groovy')
+              lightweight(true)
             }
           }
         }
