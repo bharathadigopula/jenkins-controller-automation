@@ -13,6 +13,13 @@ topology=$(jq -n '
   {jobs: (($validation + ($lifecycle | keys) | unique) | map(. as $folder | {name:$folder,_class:"com.cloudbees.hudson.plugins.folder.Folder",jobs:((if ($validation | index($folder)) != null then [{name:"validate",_class:"org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject"}] else [] end) + (($lifecycle[$folder] // []) | map({name:.,_class:"org.jenkinsci.plugins.workflow.job.WorkflowJob"})))}))}
 ')
 managed_jobs_ready <<< "$topology"
+extended_topology=$(jq '.jobs += [{name:"backstage-platform",_class:"com.cloudbees.hudson.plugins.folder.Folder",jobs:[]},{name:"wordpress-kubernetes-automation",_class:"com.cloudbees.hudson.plugins.folder.Folder",jobs:[]}]' <<< "$topology")
+managed_jobs_ready <<< "$extended_topology"
+verification=$(sed -n '/^verify_controller()/,/^}/p' "$repository_root/scripts/manage.sh")
+if [[ "$verification" != *'if ! managed_jobs_ready <<< "$controller_jobs"; then'* ]]; then
+  printf 'Final verification must use the shared managed job topology gate.\n' >&2
+  exit 1
+fi
 for missing_job in validate publish-runtime publish-migration deploy; do
   incomplete=$(jq --arg name "$missing_job" '(.jobs[] | select(.name == "clinirova") | .jobs) |= map(select(.name != $name))' <<< "$topology")
   if managed_jobs_ready <<< "$incomplete"; then
