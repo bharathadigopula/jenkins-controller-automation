@@ -27,4 +27,10 @@ for missing_job in validate publish-runtime publish-migration deploy; do
     exit 1
   fi
 done
+for expected_label in '03 - Publish Database Update Image' '04 - Upgrade Production'; do
+  if ! grep -Fq "displayName: '$expected_label'" "$repository_root/jcasc/jenkins.yaml"; then
+    printf 'Clinirova release job label is missing: %s\n' "$expected_label" >&2
+    exit 1
+  fi
+done
 printf 'jenkins_job_topology_tests=ready\n'

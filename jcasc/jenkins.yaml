@@ -186,8 +186,8 @@ jobs:
   - script: |
       def clinirovaJobs = [
         [name: 'publish-runtime', displayName: '02 - Publish Application Image', description: 'Build, security-scan, and publish the Clinirova application image. Publication requires approval.'],
-        [name: 'publish-migration', displayName: '03 - Publish Database Migration Image', description: 'Build, security-scan, and publish the migration image for the same application release. Does not change the production database.'],
-        [name: 'deploy', displayName: '04 - Deploy Production', description: 'Deploy approved application and migration image digests to clinirova.bharathcloudops.com. Includes backup, migration, readiness, and email checks. Production changes require approval.']
+        [name: 'publish-migration', displayName: '03 - Publish Database Update Image', description: 'Build, security-scan, and publish the database schema update image for the same application release. This job does not change the production database or move the application between hosts. Publication requires approval.'],
+        [name: 'deploy', displayName: '04 - Upgrade Production', description: 'Upgrade Clinirova on its existing K3s cluster using approved application and database update image digests. Includes backup, database schema updates, readiness, and email checks. The move to K3s is complete. Production changes require approval.']
       ]
       clinirovaJobs.each { lifecycle ->
         pipelineJob('clinirova/' + lifecycle.name) {
