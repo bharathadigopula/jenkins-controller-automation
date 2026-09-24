@@ -172,6 +172,8 @@ fi
 # MANAGED BACKUP VALIDATION
 #==============================================================================
 
+bash "$repository_root/scripts/test-backup-cleanup.sh"
+
 if ! grep -Fq 'jenkins-controller-backup.timer' "$repository_root/scripts/manage.sh" || \
   ! grep -Fq 'JENKINS_BACKUP_RETENTION_DAYS' "$repository_root/scripts/manage.sh"; then
   printf 'Jenkins backup scheduling and retention must be managed in versioned automation.\n' >&2
