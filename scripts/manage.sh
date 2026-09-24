@@ -503,6 +503,7 @@ verify_controller() {
 #==============================================================================
 
 backup_controller() {
+  (
   local admin_password_file="$install_root/current/secrets/jenkins-admin-password"
   local archive_staging_path
   local busy_executors
@@ -522,7 +523,7 @@ backup_controller() {
   cookie_jar=$(mktemp)
   chmod 0600 "$cookie_jar"
   trap 'rm -f "$cookie_jar"' EXIT
-  crumb_response=$(curl --fail --silent --show-error \
+  crumb_response=$(curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
     --cookie "$cookie_jar" \
     --cookie-jar "$cookie_jar" \
@@ -535,15 +536,17 @@ backup_controller() {
   fi
 
   touch "$maintenance_file"
-  trap 'curl --silent --show-error --output /dev/null --request POST --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" --cookie "$cookie_jar" --header "$crumb_field:$crumb" "$controller_origin/cancelQuietDown" || true; rm -f "$archive_staging_path" "$cookie_jar" "$maintenance_file"' EXIT
-  curl --fail --silent --show-error --output /dev/null --request POST \
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+  trap 'if curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --output /dev/null --request POST --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" --cookie "$cookie_jar" --header "$crumb_field:$crumb" "$controller_origin/cancelQuietDown"; then rm -f "$maintenance_file"; else printf "jenkins_backup_resume=failed maintenance_marker=retained\n" >&2; fi; rm -f "$archive_staging_path" "$cookie_jar"' EXIT
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --output /dev/null --request POST \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
     --cookie "$cookie_jar" \
     --header "$crumb_field:$crumb" \
     "$controller_origin/quietDown"
 
   for (( attempt = 1; attempt <= 120; attempt++ )); do
-    busy_executors=$(curl --fail --silent --show-error \
+    busy_executors=$(curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
       --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
       --cookie "$cookie_jar" \
       "$controller_origin/computer/api/json?tree=busyExecutors" | jq -r '.busyExecutors')
@@ -560,7 +563,7 @@ backup_controller() {
   tar --create --gzip --file "$archive_staging_path" --directory "$volume_path" .
   chmod 0600 "$archive_staging_path"
   mv "$archive_staging_path" "$archive_path"
-  curl --fail --silent --show-error --output /dev/null --request POST \
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --output /dev/null --request POST \
     --user "${JENKINS_ADMIN_ID:-admin}:$(<"$admin_password_file")" \
     --cookie "$cookie_jar" \
     --header "$crumb_field:$crumb" \
@@ -571,6 +574,7 @@ backup_controller() {
     -mtime "+$backup_retention_days" -delete
   printf 'jenkins_backup_archive=%s\n' "$archive_path"
   printf 'jenkins_backup=ready\n'
+  )
 }
 
 #==============================================================================

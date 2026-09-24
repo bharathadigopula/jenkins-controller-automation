@@ -121,12 +121,16 @@ LIFECYCLE OPERATIONS
 | `upgrade` | Yes | Deploys a new release and retains the prior release |
 | `verify` | No | Checks the running core version, zero controller executors, online platform agent, Docker socket isolation, authentication, metrics, UI CSP, resource-domain isolation, persisted administrator uniqueness, known recurring warnings, managed jobs, backup timer, and health watchdog |
 | `status` | No | Reports controller version, bounded metrics response metadata, backup timer, health watchdog, and Compose state; exits nonzero for an inactive component |
-| `backup` | Yes | Stops Jenkins and archives `JENKINS_HOME` |
+| `backup` | Yes | Pauses new builds, drains executors, archives `JENKINS_HOME`, and resumes scheduling; the controller stays online |
 | `restore` | Yes | Restores `JENKINS_RESTORE_ARCHIVE` |
 | `rollback` | Yes | Exchanges current and previous releases |
 | `test-restore` | Yes | Creates a fresh backup, restores it, and runs comprehensive verification |
 
 `jenkins-controller-backup.timer` runs daily at 03:00 with a random delay of up to 15 minutes. Backups are written root-only under `/var/backups/jenkins-controller` and archives older than seven days are removed. Copy retained archives to durable object storage with a separate, versioned backup job.
+
+Backup HTTP requests have a 10-second connection timeout and a 30-second total timeout. Exit cleanup runs inside the backup subshell, including on archive failure or termination. If scheduling cannot resume, the service reports `jenkins_backup_resume=failed` and retains the maintenance sentinel for investigation. Changed-file archive errors remain failures; partial archives are not promoted to completed backups. Run `bash scripts/test-backup-cleanup.sh` to check isolated success, archive failure, termination, and rejected-resume paths.
+
+On 24 September 2026, the daily backup failed with `tar: .: file changed as we read it`, followed by an exit-trap `admin_password_file: unbound variable` error. After confirming the backup service had stopped and the queue contained only scans and validation jobs, scheduling was resumed through the authenticated Jenkins `cancelQuietDown` endpoint with owner authorisation. Deploy the versioned cleanup fix through the controller pipeline; do not treat the failed archive as a verified backup.
 
 `jenkins-controller-health.timer` runs every minute. After three consecutive failed login-page checks, its watchdog restarts the systemd service and verifies recovery. Deploy, backup, and restore operations create a maintenance sentinel so intentional downtime and extended post-upgrade startup cannot trigger the watchdog.
 
